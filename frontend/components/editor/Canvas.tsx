@@ -66,7 +66,7 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
         display: "flex", justifyContent: "center",
         padding: "32px 36px 60px",
       }}>
-        {resume ? (
+        {resume && (resume.contact?.name || resume.summary || resume.experience?.length) ? (
           <ResumeArticle resume={resume} heatmap={heatmap} aiState={aiState} />
         ) : (
           <RawTextFallback rawText={rawText} aiState={aiState} />
