@@ -168,12 +168,21 @@ export const useResumeStore = create<ResumeStore>()(
     acceptPatch: (patch) =>
       set((s) => {
         if (!s.resume) return;
-        const parts = patch.path.split(/\.|\[(\d+)\]/).filter(Boolean);
+        // Parse "experience[0].bullets[9]" → ["experience", 0, "bullets", 9]
+        const parts: (string | number)[] = [];
+        const re = /([^.[]+)|\[(\d+)\]/g;
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(patch.path)) !== null) {
+          if (m[1] !== undefined) parts.push(m[1]);
+          else if (m[2] !== undefined) parts.push(Number(m[2]));
+        }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         let node: any = s.resume.content;
         for (let i = 0; i < parts.length - 1; i++) {
+          if (node == null) return;
           node = node[parts[i]];
         }
+        if (node == null) return;
         node[parts[parts.length - 1]] = patch.suggested;
         s.editor.isDirty = true;
       }),

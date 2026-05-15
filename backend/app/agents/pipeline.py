@@ -128,14 +128,54 @@ Return ONLY valid JSON."""
 
 
 async def optimization_node(state: AgentState) -> AgentState:
-    await _emit(state, "optimization", "Rewriting bullets using STAR method...")
-
-    structured = state.get("structured", {})
-    analysis = state.get("analysis", {})
+    structured = state.get("structured") or {}
+    analysis = state.get("analysis") or {}
     missing_kw = analysis.get("missing_keywords", [])
-    instructions = state.get("instructions", "")
+    instructions = state.get("instructions") or ""
     section = state.get("section")
 
+    if section:
+        await _emit(state, "optimization", f"Targeting only '{section}' section — all other sections untouched...")
+        section_data = structured.get(section)
+        if section_data is None:
+            await _emit(state, "optimization", f"Section '{section}' not found, skipping...")
+            return {**state, "optimized": structured, "reasoning": ""}
+
+        prompt = f"""You are an expert resume editor. Rewrite ONLY the "{section}" section below.
+
+{f"Instructions: {instructions}" if instructions else "Improve quality, use STAR method for bullets, strong action verbs, quantify achievements."}
+
+Rules:
+- Return ONLY the JSON value for the "{section}" key (not the full resume)
+- DO NOT invent facts or metrics not in the original
+- Preserve all existing fields and their types exactly
+
+Current "{section}" value:
+{json.dumps(section_data, indent=2)}
+
+Return ONLY valid JSON for this section's value."""
+
+        text = await llm_invoke([HumanMessage(content=prompt)])
+        # Parse result — could be an object, list, or string depending on section
+        try:
+            match = re.search(r"```json\s*([\s\S]*?)```", text)
+            raw = match.group(1) if match else text.strip()
+            raw = re.sub(r"^```[^\n]*\n?", "", raw).rstrip("`").strip()
+            rewritten = json.loads(raw)
+        except Exception:
+            rewritten = section_data  # fallback: keep original if parse fails
+
+        # Merge: only the targeted section changes, everything else is untouched
+        optimized = {**structured, section: rewritten}
+
+        reasoning = await llm_invoke([
+            SystemMessage(content="You are a resume coach. Be concise and specific."),
+            HumanMessage(content=f"I rewrote only the '{section}' section.\nBefore: {json.dumps(section_data)}\nAfter: {json.dumps(rewritten)}\nIn 1-2 sentences, explain the key improvement.")
+        ])
+        return {**state, "optimized": optimized, "reasoning": reasoning}
+
+    # Full resume rewrite (no section scoping)
+    await _emit(state, "optimization", "Rewriting bullets using STAR method...")
     if missing_kw:
         await _emit(state, "optimization", f"Weaving in missing keywords: {', '.join(missing_kw[:4])}...")
     await _emit(state, "optimization", "Strengthening action verbs and quantifying achievements...")
@@ -148,7 +188,6 @@ Rules:
 - Use strong action verbs
 - Quantify achievements when the original has numbers
 - Keep bullets concise (1-2 lines max)
-{f"- Focus only on section: {section}" if section else ""}
 {f"- Additional instructions: {instructions}" if instructions else ""}
 
 Original resume:

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
 import { useAuthStore } from "@/store/authStore";
 import { useThemeStore } from "@/store/themeStore";
 import { modKey } from "@/lib/keys";
+import { SettingsModal } from "@/components/editor/SettingsModal";
+import type { } from "@/store/settingsStore";
 
 interface TopBarProps {
   resumeTitle?: string;
@@ -18,6 +20,157 @@ interface TopBarProps {
   onBack: () => void;
   aiState: "idle" | "streaming" | "review" | "accepted";
   isDirty: boolean;
+}
+
+type SettingsTab = "profile" | "preferences" | "editor" | "ai" | "notifications" | "data";
+
+function UserMenu({ user, clearAuth, theme, toggleTheme }: {
+  user: { email: string; full_name?: string } | null;
+  clearAuth: () => void;
+  theme: string;
+  toggleTheme: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsTab, setSettingsTab] = useState<SettingsTab>("profile");
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const h = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+
+  const openSettings = (tab: SettingsTab) => {
+    setSettingsTab(tab);
+    setSettingsOpen(true);
+    setOpen(false);
+  };
+
+  const initial = user?.email?.[0]?.toUpperCase() ?? "U";
+  const displayName = user?.full_name || user?.email?.split("@")[0] || "User";
+  const email = user?.email ?? "";
+
+  return (
+    <>
+      <SettingsModal open={settingsOpen} onClose={() => setSettingsOpen(false)} initialTab={settingsTab} />
+
+      <div ref={ref} style={{ position: "relative" }}>
+        {/* Avatar trigger */}
+        <button
+          onClick={() => setOpen(v => !v)}
+          title={email}
+          style={{
+            width: 30, height: 30, borderRadius: 99,
+            background: open ? "var(--accent)" : "var(--bg-3)",
+            color: open ? "var(--bg-0)" : "var(--accent)",
+            border: `1.5px solid ${open ? "var(--accent)" : "var(--line)"}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 12, fontWeight: 700, cursor: "pointer",
+            transition: "background 0.15s, color 0.15s",
+            flexShrink: 0,
+          }}
+        >
+          {initial}
+        </button>
+
+        {/* Dropdown */}
+        {open && (
+          <div style={{
+            position: "absolute", top: "calc(100% + 8px)", right: 0,
+            width: 230,
+            background: "var(--bg-1)",
+            border: "1px solid var(--line)",
+            borderRadius: 10,
+            boxShadow: "0 12px 32px -8px rgba(0,0,0,0.5)",
+            zIndex: 100,
+            overflow: "hidden",
+          }}>
+            {/* User header */}
+            <div style={{ padding: "12px 14px 10px", borderBottom: "1px solid var(--line)", display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 34, height: 34, borderRadius: 99, flexShrink: 0,
+                background: "var(--accent)", color: "var(--bg-0)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 14, fontWeight: 700,
+              }}>
+                {initial}
+              </div>
+              <div style={{ minWidth: 0 }}>
+                <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-0)", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {displayName}
+                </div>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {email}
+                </div>
+              </div>
+            </div>
+
+            {/* Menu items */}
+            <div style={{ padding: "6px 0" }}>
+              <DItem icon="user"     label="Profile"       onClick={() => openSettings("profile")} />
+              <DItem icon="settings" label="Preferences"   onClick={() => openSettings("preferences")} />
+              <DItem icon="doc"      label="Editor"        onClick={() => openSettings("editor")} />
+              <DItem icon="sparkle"  label="AI & Models"   onClick={() => openSettings("ai")} />
+              <DItem icon="bolt"     label="Notifications" onClick={() => openSettings("notifications")} />
+              <DItem icon="download" label="Data & Export" onClick={() => openSettings("data")} />
+
+              <div style={{ borderTop: "1px solid var(--line)", margin: "4px 0" }} />
+
+              {/* Theme toggle inline */}
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "7px 14px" }}>
+                <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>
+                  {theme === "dark" ? "Dark mode" : "Light mode"}
+                </span>
+                <button
+                  onClick={toggleTheme}
+                  style={{
+                    width: 36, height: 20, borderRadius: 99, border: 0, cursor: "pointer",
+                    background: theme === "dark" ? "var(--accent)" : "var(--bg-3)",
+                    position: "relative", transition: "background 0.2s",
+                  }}
+                >
+                  <span style={{
+                    position: "absolute", top: 2, left: theme === "dark" ? 18 : 2,
+                    width: 16, height: 16, borderRadius: 99,
+                    background: "var(--bg-0)", transition: "left 0.2s",
+                  }} />
+                </button>
+              </div>
+
+              <div style={{ borderTop: "1px solid var(--line)", margin: "4px 0" }} />
+
+              <DItem icon="x" label="Sign out" onClick={() => { clearAuth(); setOpen(false); }} danger />
+            </div>
+          </div>
+        )}
+      </div>
+    </>
+  );
+}
+
+function DItem({ icon, label, onClick, danger }: { icon: string; label: string; onClick: () => void; danger?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      className="mono"
+      style={{
+        width: "100%", display: "flex", alignItems: "center", gap: 9,
+        padding: "7px 14px", border: 0, background: "transparent",
+        color: danger ? "var(--red)" : "var(--fg-1)",
+        fontSize: 12, cursor: "pointer", textAlign: "left",
+        transition: "background 0.1s",
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = "var(--bg-3)"; }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = "transparent"; }}
+    >
+      <Icon name={icon} size={13} style={{ color: danger ? "var(--red)" : "var(--fg-3)" }} />
+      {label}
+    </button>
+  );
 }
 
 export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopAI, onHistory, onExport, onShare, onBack, aiState, isDirty }: TopBarProps) {
@@ -95,7 +248,7 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
         </div>
 
         {/* Save indicator */}
-        <div className="mono" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 11, color: "var(--fg-4)", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", flexShrink: 0 }}>
           {isDirty ? (
             <span style={{ width: 5, height: 5, borderRadius: 99, background: "var(--amber)", display: "inline-block" }} />
           ) : (
@@ -136,16 +289,8 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
       {/* Right: grouped actions */}
       <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
 
-        {/* Secondary actions group */}
-        <div style={{ display: "flex", gap: 2, alignItems: "center", padding: "0 4px", borderRight: "1px solid var(--line)" }}>
-          <button
-            onClick={toggleTheme}
-            className="btn btn-ghost"
-            title="Toggle theme (Ctrl+J)"
-            style={{ width: 30, height: 30, padding: 0, justifyContent: "center", fontSize: 14 }}
-          >
-            {theme === "dark" ? "☀" : "◑"}
-          </button>
+        {/* Secondary actions */}
+        <div style={{ display: "flex", gap: 2, alignItems: "center", paddingRight: 8, borderRight: "1px solid var(--line)" }}>
           {onShare && (
             <button onClick={onShare} className="btn btn-ghost mono" title="Share resume" style={{ height: 30, fontSize: 11.5 }}>
               <Icon name="branch" size={11} /> share
@@ -160,7 +305,7 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
         </div>
 
         {/* AI action */}
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        <div style={{ display: "flex", gap: 4, alignItems: "center", paddingRight: 8, borderRight: "1px solid var(--line)" }}>
           {aiState === "streaming" && (
             <button
               onClick={onStopAI}
@@ -186,27 +331,8 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
           </button>
         </div>
 
-        {/* User */}
-        {user && (
-          <div style={{ display: "flex", alignItems: "center", gap: 6, paddingLeft: 8, borderLeft: "1px solid var(--line)" }}>
-            <div style={{
-              width: 26, height: 26, borderRadius: 99,
-              background: "var(--accent)", color: "var(--bg-0)",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 600, flexShrink: 0,
-            }}>
-              {user.email?.[0]?.toUpperCase() ?? "U"}
-            </div>
-            <button
-              onClick={clearAuth}
-              className="btn btn-ghost mono"
-              title="Sign out"
-              style={{ height: 28, fontSize: 11, color: "var(--fg-3)" }}
-            >
-              sign out
-            </button>
-          </div>
-        )}
+        {/* User avatar + dropdown */}
+        <UserMenu user={user} clearAuth={clearAuth} theme={theme} toggleTheme={toggleTheme} />
       </div>
     </header>
   );

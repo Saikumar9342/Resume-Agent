@@ -34,6 +34,7 @@ export function ResumeApp() {
 
   const [screen, setScreen] = useState<Screen>("landing");
   const [resumeId, setResumeId] = useState<string | null>(null);
+  const [restoring, setRestoring] = useState(true);
   const [rawText, setRawText] = useState("");
   const [jd, setJD] = useState("");
   const [activeSection, setActiveSection] = useState<SectionId>("summary");
@@ -47,6 +48,29 @@ export function ResumeApp() {
   const [printing, setPrinting] = useState(false);
   const [template, setTemplate] = useState<TemplateId>("classic");
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+
+  // Persist last resumeId across reloads
+  useEffect(() => {
+    if (resumeId) localStorage.setItem("last_resume_id", resumeId);
+  }, [resumeId]);
+
+  // On mount: restore last session if authenticated
+  useEffect(() => {
+    if (!isAuthenticated()) { setRestoring(false); return; }
+    const saved = localStorage.getItem("last_resume_id");
+    if (!saved) { setRestoring(false); return; }
+    api.getResume(saved)
+      .then(r => {
+        setResume(r);
+        setResumeId(r.id);
+        setScreen("editor");
+      })
+      .catch(() => {
+        localStorage.removeItem("last_resume_id");
+      })
+      .finally(() => setRestoring(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { requestAI, cancelAI, requestGhost } = useResumeWebSocket(resumeId, (msg) => {
     setAIError(msg);
@@ -70,6 +94,18 @@ export function ResumeApp() {
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeId]);
+
+  // Auto-rerun ATS after edits (3s debounce, skip while AI is streaming)
+  useEffect(() => {
+    if (!resumeId || !resume?.content || ai.isStreaming) return;
+    const t = setTimeout(() => {
+      api.analyzeATS(resumeId, jd || undefined)
+        .then(a => setATS(a))
+        .catch(() => {});
+    }, 3000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resume?.content, jd]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -152,18 +188,101 @@ export function ResumeApp() {
   };
 
   const handleATSFix = async () => {
-    if (!resumeId || !ats) return;
-    const failing = ats.checkpoints.filter(c => !c.passed).map(c => c.label);
+    if (!resumeId || !ats || !resume?.content) return;
+    const failing = ats.checkpoints.filter(c => !c.passed);
     const missing = ats.missing_keywords.slice(0, 10);
-    const instructions = [
-      "Fix the following ATS issues in this resume:",
-      ...failing.map(f => `- ${f}`),
-      missing.length > 0 ? `- Naturally incorporate these missing keywords where relevant: ${missing.join(", ")}` : "",
-    ].filter(Boolean).join("\n");
+
+    // Map every checkpoint label to the section it belongs to
+    const CHECKPOINT_SECTION_MAP: Record<string, string> = {
+      "email address present":              "contact",
+      "phone number present":               "contact",
+      "linkedin url present":               "contact",
+      "github url present":                 "contact",
+      "professional summary present":       "summary",
+      "summary is 2-4 sentences":           "summary",
+      "summary has keywords":               "summary",
+      "work experience section present":    "experience",
+      "experience entries include dates":   "experience",
+      "experience has achievement bullets": "experience",
+      "bullets start with action verbs":    "experience",
+      "bullets include quantified results": "experience",
+      "education section present":          "education",
+      "education includes degree type":     "education",
+      "skills section present":             "skills",
+      "skills section has 5+ items":        "skills",
+      "certifications present":             "certifications",
+      "projects present":                   "projects",
+    };
+
+    // Group failing checkpoints by section
+    const sectionIssues: Record<string, string[]> = {};
+    const unmapped: string[] = [];
+    for (const c of failing) {
+      const sec = CHECKPOINT_SECTION_MAP[c.label.toLowerCase()];
+      if (sec) {
+        (sectionIssues[sec] ??= []).push(c.label);
+      } else {
+        unmapped.push(c.label);
+      }
+    }
+
+    // Add missing keywords to the most relevant section (experience, else summary)
+    if (missing.length > 0) {
+      const kwSection = sectionIssues["experience"] ? "experience" : "summary";
+      (sectionIssues[kwSection] ??= []).push(
+        `Incorporate these missing keywords naturally: ${missing.join(", ")}`
+      );
+    }
+
+    const affectedSections = Object.keys(sectionIssues);
+
+    // Fire one targeted AI call per affected section — never touch the rest
     setAIError(null);
     await saveBeforeAI();
-    requestAI(rawText, jd || undefined, undefined, instructions);
     setRailTab("ai");
+
+    // Specific guidance per checkpoint so the AI knows exactly what to do
+    const CHECKPOINT_GUIDANCE: Record<string, string> = {
+      "bullets include quantified results":
+        "Add concrete numbers, percentages, or metrics to at least 2 bullets. Use realistic estimates based on context (e.g. 'reduced load time by 30%', 'served 500+ users', 'cut processing time by 2x'). Do NOT invent company names or job titles.",
+      "bullets start with action verbs":
+        "Start every bullet with a strong action verb (Led, Built, Designed, Implemented, Improved, Reduced, Delivered, etc.).",
+      "summary is 2-4 sentences":
+        "Rewrite the summary to be exactly 2-4 concise sentences.",
+      "experience entries include dates":
+        "Add start and end dates to every experience entry in MM-YYYY or YYYY format.",
+      "skills section has 5+ items":
+        "Add more technical skills to reach at least 5 items total.",
+      "linkedin url present":
+        "Add a placeholder LinkedIn URL if missing: linkedin.com/in/yourname",
+    };
+
+    for (const sec of affectedSections) {
+      const issues = sectionIssues[sec];
+      const instructionLines = issues.map(issue => {
+        const guidance = CHECKPOINT_GUIDANCE[issue.toLowerCase()];
+        return guidance ? `- ${issue}: ${guidance}` : `- ${issue}`;
+      });
+      const instructions = [
+        `You are fixing ATS issues in the "${sec}" section ONLY.`,
+        "Do NOT touch any other section. Preserve all other content exactly.",
+        "",
+        "Fix these specific issues:",
+        ...instructionLines,
+      ].join("\n");
+
+      requestAI(JSON.stringify(resume.content), jd || undefined, sec, instructions);
+
+      // Small gap between sequential section calls so the WS isn't flooded
+      if (affectedSections.length > 1) {
+        await new Promise(r => setTimeout(r, 300));
+      }
+    }
+
+    // If any checkpoints didn't map to a known section, log but skip
+    if (unmapped.length > 0) {
+      console.warn("ATS fix: unmapped checkpoints skipped:", unmapped);
+    }
   };
 
   const handleExport = () => {
@@ -259,6 +378,8 @@ export function ResumeApp() {
     return rawText ? rawText.split(/\s+/).filter(Boolean).length : 0;
   })();
 
+  if (restoring) return null;
+
   if (screen === "landing") {
     return (
       <>
@@ -331,89 +452,207 @@ export function ResumeApp() {
             setResume(null);
             setATS(null);
             markDirty(false);
+            localStorage.removeItem("last_resume_id");
             setScreen("editor");
           }}
         />
 
         {!resumeId ? (
-          /* Pre-create: raw text entry */
+          /* Pre-create: resume import */
           <main style={{
             background: "var(--bg-0)",
             display: "flex", flexDirection: "column",
             minHeight: 0, borderRight: "1px solid var(--line)",
+            overflow: "auto",
           }}>
-            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 36px" }}>
-              <div style={{
-                width: 760, maxWidth: "100%",
-                background: "var(--bg-1)",
-                border: "1px solid var(--line)",
-                borderRadius: 12,
-                padding: "48px 56px",
-                boxShadow: "0 40px 60px -30px black",
-              }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                  <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
-                    paste your resume · or upload a file
-                  </div>
-                  <label style={{
-                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "4px 12px", borderRadius: 5, fontSize: 11, fontFamily: "var(--mono)",
-                    background: "var(--bg-2)", border: "1px solid var(--line)", color: "var(--fg-1)",
-                  }}>
-                    ↑ upload .txt / .pdf / .docx
-                    <input type="file" accept=".txt,.pdf,.docx,text/plain" style={{ display: "none" }}
-                      onChange={async e => {
-                        const file = e.target.files?.[0];
-                        if (!file) return;
-                        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
-                          // PDF: send to backend for text extraction
-                          const form = new FormData();
-                          form.append("file", file);
-                          const { token: authToken } = useAuthStore.getState();
-                          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/extract-text`, {
-                            method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: form,
-                          });
-                          if (res.ok) { const d = await res.json(); setRawText(d.text); markDirty(true); }
-                          else { alert("Could not extract PDF text. Try copying and pasting the text instead."); }
-                        } else {
-                          // Plain text or docx fallback — read as text
-                          const text = await file.text();
-                          setRawText(text);
-                          markDirty(true);
-                        }
-                        e.target.value = "";
-                      }}
-                    />
-                  </label>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px 40px", minHeight: 0 }}>
+
+              {/* Header */}
+              <div style={{ textAlign: "center", marginBottom: 32 }}>
+                <div style={{ fontSize: 22, fontWeight: 700, color: "var(--fg-0)", letterSpacing: "-0.02em", marginBottom: 6 }}>
+                  Import your resume
                 </div>
-                <textarea
-                  value={rawText}
-                  onChange={e => { setRawText(e.target.value); markDirty(true); }}
-                  placeholder="Paste your resume here to get started. The AI will parse it into sections automatically."
+                <div className="mono" style={{ fontSize: 12, color: "var(--fg-4)" }}>
+                  Paste text or upload a file — AI will parse it into sections instantly
+                </div>
+              </div>
+
+              <div style={{ width: "100%", maxWidth: 680, display: "flex", flexDirection: "column", gap: 12 }}>
+
+                {/* Upload zone */}
+                <label
                   style={{
-                    width: "100%", minHeight: 380,
-                    fontFamily: "var(--sans)", fontSize: 13, lineHeight: 1.6,
-                    color: "var(--fg-1)", background: "transparent",
-                    resize: "vertical",
+                    display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                    gap: 10, padding: "28px 24px",
+                    border: `2px dashed ${rawText ? "var(--accent)" : "var(--line)"}`,
+                    borderRadius: 12, cursor: "pointer",
+                    background: rawText ? "color-mix(in oklch, var(--accent) 4%, var(--bg-1))" : "var(--bg-1)",
+                    transition: "border-color 0.2s, background 0.2s",
                   }}
-                />
-                <div style={{ marginTop: 24, display: "flex", gap: 10 }}>
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={async e => {
+                    e.preventDefault();
+                    const file = e.dataTransfer.files?.[0];
+                    if (!file) return;
+                    if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+                      const form = new FormData();
+                      form.append("file", file);
+                      const { token: authToken } = useAuthStore.getState();
+                      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/extract-text`, {
+                        method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: form,
+                      });
+                      if (res.ok) { const d = await res.json(); setRawText(d.text); markDirty(true); }
+                      else alert("Could not extract PDF text. Try pasting the text instead.");
+                    } else {
+                      setRawText(await file.text()); markDirty(true);
+                    }
+                  }}
+                >
+                  <input type="file" accept=".txt,.pdf,.docx,text/plain" style={{ display: "none" }}
+                    onChange={async e => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+                        const form = new FormData();
+                        form.append("file", file);
+                        const { token: authToken } = useAuthStore.getState();
+                        const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/extract-text`, {
+                          method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: form,
+                        });
+                        if (res.ok) { const d = await res.json(); setRawText(d.text); markDirty(true); }
+                        else alert("Could not extract PDF text. Try pasting the text instead.");
+                      } else {
+                        setRawText(await file.text()); markDirty(true);
+                      }
+                      e.target.value = "";
+                    }}
+                  />
+                  {rawText ? (
+                    <>
+                      <div style={{ fontSize: 28 }}>✓</div>
+                      <div className="mono" style={{ fontSize: 12, color: "var(--accent)", fontWeight: 600 }}>
+                        {rawText.split(/\s+/).filter(Boolean).length} words loaded
+                      </div>
+                      <div className="mono" style={{ fontSize: 11, color: "var(--fg-4)" }}>click to replace file</div>
+                    </>
+                  ) : (
+                    <>
+                      <div style={{ fontSize: 28, opacity: 0.4 }}>↑</div>
+                      <div style={{ textAlign: "center" }}>
+                        <div className="mono" style={{ fontSize: 12.5, color: "var(--fg-1)", fontWeight: 600 }}>Drop your resume here</div>
+                        <div className="mono" style={{ fontSize: 11, color: "var(--fg-4)", marginTop: 3 }}>PDF, DOCX, or TXT · or click to browse</div>
+                      </div>
+                    </>
+                  )}
+                </label>
+
+                {/* Divider */}
+                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                  <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                  <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>or paste text</span>
+                  <div style={{ flex: 1, height: 1, background: "var(--line)" }} />
+                </div>
+
+                {/* Paste textarea */}
+                <div style={{
+                  border: "1px solid var(--line)", borderRadius: 10,
+                  background: "var(--bg-1)", overflow: "hidden",
+                  focusWithin: "border-color: var(--accent)",
+                }}>
+                  <textarea
+                    value={rawText}
+                    onChange={e => { setRawText(e.target.value); markDirty(true); }}
+                    placeholder={"Paste your resume text here…\n\nThe AI will automatically detect and parse:\n  · Contact info  · Work experience\n  · Education      · Skills & certifications"}
+                    style={{
+                      width: "100%", height: 180,
+                      fontFamily: "var(--mono)", fontSize: 12, lineHeight: 1.7,
+                      color: "var(--fg-1)", background: "transparent",
+                      resize: "none", padding: "14px 16px",
+                      outline: "none", border: "none",
+                    }}
+                  />
+                  {rawText && (
+                    <div style={{
+                      borderTop: "1px solid var(--line-soft)", padding: "6px 14px",
+                      display: "flex", justifyContent: "space-between", alignItems: "center",
+                    }}>
+                      <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>
+                        {rawText.split(/\s+/).filter(Boolean).length} words · {rawText.length} chars
+                      </span>
+                      <button
+                        onClick={() => { setRawText(""); markDirty(false); }}
+                        className="mono"
+                        style={{ fontSize: 10.5, color: "var(--fg-4)", background: "none", border: "none", cursor: "pointer" }}
+                      >
+                        clear ×
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Actions */}
+                <div style={{ display: "flex", gap: 10, alignItems: "center", marginTop: 4 }}>
                   <button
                     onClick={() => handleAIRewrite()}
                     disabled={isCreating || !rawText}
                     className="btn btn-accent mono"
-                    style={{ height: 34, fontSize: 12, padding: "0 16px" }}
+                    style={{ height: 38, fontSize: 13, padding: "0 22px", flex: 1, justifyContent: "center", opacity: !rawText ? 0.4 : 1 }}
                   >
-                    {isCreating ? "creating…" : "start with AI →"}
+                    <span style={{ fontSize: 14 }}>✦</span>
+                    {isCreating ? "parsing resume…" : "parse & open with AI"}
                   </button>
                   <button
-                    onClick={() => { setResumeId("demo"); setScreen("editor"); }}
+                    onClick={async () => {
+                      const SAMPLE = `John Smith
+john.smith@email.com | +1 (555) 123-4567 | San Francisco, CA
+linkedin.com/in/johnsmith | github.com/johnsmith
+
+SUMMARY
+Software Engineer with 4+ years of experience building scalable web applications and APIs. Proficient in React, Node.js, Python, and cloud infrastructure. Passionate about developer tooling and great user experiences.
+
+EXPERIENCE
+Acme Corp — San Francisco, CA
+Senior Software Engineer | Jan 2022 – Present
+• Led migration of monolithic backend to microservices, reducing deployment time by 60%
+• Built real-time dashboard used by 10,000+ daily active users using React and WebSockets
+• Mentored 3 junior engineers and conducted weekly code reviews
+• Improved API response times by 40% through query optimization and caching strategies
+
+Startup XYZ — Remote
+Software Engineer | Jun 2020 – Dec 2021
+• Developed and shipped 5 major product features from design to production
+• Integrated third-party payment and auth systems (Stripe, Auth0)
+• Wrote comprehensive test suites, increasing code coverage from 45% to 85%
+
+EDUCATION
+University of California, Berkeley
+B.S. Computer Science | 2020
+
+SKILLS
+Technical: JavaScript, TypeScript, React, Node.js, Python, PostgreSQL, Redis, Docker, AWS, Git
+Soft: Leadership, Communication, Problem Solving, Agile
+
+CERTIFICATIONS
+AWS Certified Solutions Architect – Associate (2023)
+
+PROJECTS
+DevTools Dashboard — github.com/johnsmith/devtools
+A developer productivity dashboard with CI/CD metrics, log streaming, and team insights. Built with Next.js, FastAPI, and PostgreSQL.`;
+                      setRawText(SAMPLE);
+                      await handleAIRewrite();
+                    }}
                     className="btn btn-ghost mono"
-                    style={{ height: 34, fontSize: 12 }}
+                    style={{ height: 38, fontSize: 12, whiteSpace: "nowrap" }}
                   >
                     load sample
                   </button>
                 </div>
+
+                {/* Hint */}
+                <div className="mono" style={{ textAlign: "center", fontSize: 11, color: "var(--fg-4)", marginTop: 4 }}>
+                  Your data stays private · processed securely on our servers
+                </div>
+
               </div>
             </div>
           </main>

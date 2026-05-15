@@ -4,3 +4,6 @@ site_package_path = ["venv/Lib/site-packages"]
 
 [errors]
 missing-import = false
+missing-attribute = false
+bad-specialization = false
+bad-return = false

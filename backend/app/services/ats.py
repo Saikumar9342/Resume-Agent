@@ -67,7 +67,19 @@ def score_resume(content: dict, job_description: Optional[str] = None) -> dict:
             1 for b in all_bullets
             if b.strip().split()[0].lower().rstrip(".,") in ACTION_VERBS
         ) / max(len(all_bullets), 1) > 0.6,
-        "bullets_quantified": any(re.search(r"\d+[%x]?|\$[\d,]+", b) for b in all_bullets),
+        "bullets_quantified": any(
+            re.search(
+                r"\d+[%x+]?"           # 40%, 3x, 5+
+                r"|\$[\d,]+"           # $500k
+                r"|\d+\s*(team|people|engineers|clients|users|services|systems|projects|hours|days|weeks|months)"
+                r"|\d+\+?\s*years?"    # 2+ years
+                r"|(reduced|improved|increased|decreased|saved|grew|scaled|cut|boosted)\s+\w+\s+(by\s+)?\d+"
+                r"|(hundreds|thousands|millions)\s+of"
+                r"|[1-9]\d*\s*(percent|x faster|x more|x reduction)",
+                b, re.IGNORECASE
+            )
+            for b in all_bullets
+        ),
         "has_education": len(education) > 0,
         "education_has_degree": any(e.get("degree") for e in education),
         "has_skills": bool(skills),

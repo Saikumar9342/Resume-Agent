@@ -164,77 +164,98 @@ function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, ac
     validation: "var(--green)",
   };
 
+  const statusLabel = aiState === "streaming" ? "running" : aiState === "review" ? "awaiting review" : aiState === "accepted" ? "done" : "idle";
+  const statusDot: "accent" | "amber" | "green" = aiState === "streaming" ? "accent" : aiState === "review" ? "amber" : "green";
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: 0 }}>
-      {/* terminal header */}
+
+      {/* Header */}
       <div style={{
-        padding: "10px 14px",
+        padding: "10px 14px 9px",
         borderBottom: "1px solid var(--line)",
         display: "flex", alignItems: "center", justifyContent: "space-between",
-        flexShrink: 0,
+        flexShrink: 0, gap: 8,
       }}>
-        <div className="mono" style={{ fontSize: 11, color: "var(--fg-2)", display: "flex", alignItems: "center", gap: 8 }}>
-          <Dot tone={aiState === "streaming" ? "accent" : aiState === "review" ? "amber" : "green"} />
-          <span>agent · {aiState === "streaming" ? "running" : aiState === "review" ? "awaiting review" : aiState === "accepted" ? "applied" : "idle"}</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <Dot tone={statusDot} />
+          <span className="mono" style={{ fontSize: 11.5, color: "var(--fg-1)", fontWeight: 600 }}>AI Agent</span>
+          <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>· {statusLabel}</span>
         </div>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>
-          {activeModel ? `${activeModel} · 4 nodes` : aiState === "idle" ? "—" : "loading…"}
-        </div>
+        {activeModel && (
+          <span className="mono" style={{
+            fontSize: 9.5, color: "var(--fg-4)",
+            background: "var(--bg-3)", padding: "2px 7px", borderRadius: 4,
+            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: 160,
+          }}>
+            {activeModel.replace("claude-", "").replace(/-\d{8,}/, "")}
+          </span>
+        )}
       </div>
 
-      {/* Pipeline progress */}
+      {/* Pipeline steps */}
       <PipelineBar activities={activities} aiState={aiState} />
 
-      {/* Error banner */}
+      {/* Error */}
       {aiError && (
         <div style={{
-          margin: "10px 12px",
-          padding: "10px 14px",
-          background: "color-mix(in oklch, var(--red) 10%, var(--bg-1))",
-          border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
+          margin: "10px 12px", padding: "10px 14px", flexShrink: 0,
+          background: "color-mix(in oklch, var(--red) 8%, var(--bg-0))",
+          border: "1px solid color-mix(in oklch, var(--red) 25%, transparent)",
           borderRadius: 8,
-          flexShrink: 0,
         }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
-            ✕ agent error
-          </div>
-          <div style={{ fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.5 }}>
+          <div className="mono" style={{ fontSize: 10, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>✕ error</div>
+          <div style={{ fontSize: 12, color: "var(--fg-1)", lineHeight: 1.5 }}>
             {aiError.includes("RESOURCE_EXHAUSTED") || aiError.includes("quota")
-              ? "Gemini API quota exhausted. Get a new API key from aistudio.google.com and update backend/.env"
+              ? "API quota exhausted — check your provider key in backend/.env"
               : aiError.includes("API_KEY") || aiError.includes("invalid")
-              ? "Invalid Gemini API key. Check GOOGLE_API_KEY in backend/.env"
+              ? "Invalid API key — check backend/.env"
               : aiError}
           </div>
         </div>
       )}
 
-      {/* Log area */}
+      {/* Log */}
       {showLog ? (
         <div style={{
           background: "var(--bg-0)",
-          padding: "12px 14px",
+          padding: "10px 12px",
           flex: showDiffs ? "0 0 auto" : "1 1 auto",
-          minHeight: 0,
-          overflow: "auto",
-          borderBottom: showDiffs ? "1px solid var(--line)" : "0",
-          maxHeight: showDiffs ? 200 : "none",
-        }} className="mono">
+          minHeight: 0, overflow: "auto",
+          borderBottom: showDiffs ? "1px solid var(--line)" : "none",
+          maxHeight: showDiffs ? 210 : "none",
+        }}>
           {activities.map((a, i) => (
-            <div key={i} className="line-in" style={{ display: "flex", gap: 8, fontSize: 11.5, lineHeight: 1.7 }}>
-              <span style={{ color: "var(--fg-4)", width: 12 }}>›</span>
-              <span style={{ color: nodeColorMap[a.node] || "var(--fg-2)", width: 80, flexShrink: 0 }}>[{a.node}]</span>
+            <div key={i} className="line-in mono" style={{ display: "flex", gap: 0, fontSize: 11.5, lineHeight: 1.65, marginBottom: 1 }}>
+              {/* Node badge */}
+              <span style={{
+                flexShrink: 0, marginRight: 8,
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                color: nodeColorMap[a.node] || "var(--fg-2)",
+                background: `color-mix(in oklch, ${nodeColorMap[a.node] || "var(--fg-2)"} 12%, transparent)`,
+                border: `1px solid color-mix(in oklch, ${nodeColorMap[a.node] || "var(--fg-2)"} 25%, transparent)`,
+                borderRadius: 4, padding: "1px 6px",
+                alignSelf: "flex-start", marginTop: 2,
+                whiteSpace: "nowrap",
+              }}>
+                {a.node}
+              </span>
               <span style={{ color: "var(--fg-1)", flex: 1, wordBreak: "break-word" }}>{a.message}</span>
             </div>
           ))}
           {aiState === "streaming" && (
-            <div style={{ display: "flex", gap: 8, fontSize: 12, color: "var(--fg-3)" }}>
-              <span style={{ color: "var(--accent)" }}>›</span>
-              <span className="caret" style={{ background: "var(--fg-2)", width: 7, height: 12, display: "inline-block" }} />
+            <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 6 }}>
+              <span className="caret" style={{ background: "var(--accent)", width: 6, height: 13, display: "inline-block", borderRadius: 1 }} />
             </div>
           )}
           {aiState !== "streaming" && activities.length > 0 && (
-            <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)", color: "var(--accent)", fontSize: 11, display: "flex", justifyContent: "space-between" }}>
-              <span>{aiState === "accepted" ? "✓ patches applied" : "↳ review patches below"}</span>
+            <div className="mono" style={{
+              marginTop: 10, paddingTop: 10, borderTop: "1px dashed var(--line)",
+              fontSize: 11, color: aiState === "accepted" ? "var(--green)" : "var(--accent)",
+              display: "flex", alignItems: "center", gap: 6,
+            }}>
+              {aiState === "accepted" ? <Icon name="check" size={11} /> : <Icon name="sparkle" size={11} />}
+              {aiState === "accepted" ? "patches applied" : "review patches below"}
             </div>
           )}
           <div ref={bottomRef} />
@@ -243,43 +264,44 @@ function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, ac
         <EmptyState
           icon="terminal"
           title="Idle"
-          msg="Press Ctrl+Enter or click rewrite to run the agent. Output streams in as patches you can accept individually."
+          msg="Press Ctrl+Enter or click rewrite to run the agent. Output streams here as patches you can review individually."
         />
       )}
 
       {/* Diffs */}
       {showDiffs && (
         <div style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
+          {/* Sticky toolbar */}
           <div style={{
-            padding: "12px 14px 10px",
+            padding: "8px 12px",
             display: "flex", alignItems: "center", justifyContent: "space-between",
             borderBottom: "1px solid var(--line)",
             background: "var(--bg-1)",
             position: "sticky", top: 0, zIndex: 1,
-            flexShrink: 0,
           }}>
-            <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em" }}>
-              {pendingResult.diff_patches.length} patches
-            </div>
+            <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
+              {pendingResult.diff_patches.length} patch{pendingResult.diff_patches.length !== 1 ? "es" : ""} to review
+            </span>
             <div style={{ display: "flex", gap: 6 }}>
-              <button onClick={onRejectAll} className="btn btn-ghost mono" style={{ fontSize: 11, height: 24 }}>reject</button>
+              <button onClick={onRejectAll} className="btn btn-ghost mono" style={{ fontSize: 11, height: 24 }}>discard</button>
               <button onClick={onAcceptAll} className="btn btn-accent mono" style={{ fontSize: 11, height: 24 }}>
-                accept all ({pendingResult.diff_patches.length})
+                accept all ↓
               </button>
             </div>
           </div>
+
           <div style={{ padding: "10px 12px 16px" }}>
+            {/* Reasoning card */}
             {reasoning && (
               <div style={{
-                background: "color-mix(in oklch, var(--accent) 8%, var(--bg-1))",
+                background: "color-mix(in oklch, var(--accent) 6%, var(--bg-1))",
                 border: "1px solid var(--accent-line)",
-                borderRadius: 8, padding: "10px 12px",
-                marginBottom: 10,
+                borderRadius: 8, padding: "10px 12px", marginBottom: 10,
               }}>
-                <div className="mono" style={{ fontSize: 10, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4, display: "flex", gap: 6, alignItems: "center" }}>
-                  <Icon name="sparkle" size={10} /> agent rationale
+                <div className="mono" style={{ fontSize: 10, color: "var(--accent)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 5, display: "flex", gap: 5, alignItems: "center" }}>
+                  <Icon name="sparkle" size={10} /> rationale
                 </div>
-                <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--fg-0)" }}>{reasoning}</div>
+                <div style={{ fontSize: 12, lineHeight: 1.6, color: "var(--fg-1)" }}>{reasoning}</div>
               </div>
             )}
             {pendingResult.diff_patches.map((patch, i) => (
@@ -294,29 +316,39 @@ function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, ac
 
 function PipelineBar({ activities, aiState }: { activities: AIActivity[]; aiState: string }) {
   const nodes: Array<AIActivity["node"]> = ["extraction", "analysis", "optimization", "validation"];
+  const nodeColors: Record<string, string> = {
+    extraction: "var(--blue)", analysis: "var(--amber)",
+    optimization: "var(--accent)", validation: "var(--green)",
+  };
   const done = aiState === "review" || aiState === "accepted";
 
   return (
     <div style={{ display: "flex", borderBottom: "1px solid var(--line)", flexShrink: 0 }}>
       {nodes.map((n, i) => {
         const seen = activities.filter(a => a.node === n).length;
-        const current = aiState === "streaming" && seen > 0;
-        const finished = done || (aiState !== "streaming" && seen > 0);
+        const isCurrent = aiState === "streaming" && seen > 0 &&
+          activities.findLast(a => a.node === n) === activities[activities.length - 1];
+        const isFinished = done || seen > 0;
+        const color = nodeColors[n];
         return (
           <div key={n} style={{
-            flex: 1, padding: "8px 10px",
-            borderRight: i < nodes.length - 1 ? "1px solid var(--line-soft)" : "0",
-            background: current ? "color-mix(in oklch, var(--accent) 8%, var(--bg-1))" : "var(--bg-1)",
+            flex: 1, padding: "7px 8px",
+            borderRight: i < nodes.length - 1 ? "1px solid var(--line-soft)" : "none",
+            background: isCurrent ? `color-mix(in oklch, ${color} 6%, var(--bg-1))` : "transparent",
+            transition: "background 0.2s",
           }}>
-            <div className="mono" style={{ display: "flex", alignItems: "center", gap: 5, fontSize: 10.5, color: current ? "var(--accent)" : finished ? "var(--green)" : "var(--fg-3)" }}>
-              {finished && !current
-                ? <Icon name="check" size={10} />
-                : current
-                ? <span className="caret" style={{ width: 5, height: 5, background: "currentColor", display: "inline-block", borderRadius: 1 }} />
-                : <Icon name="dot" size={8} />}
-              {n.slice(0, 5)}
+            <div className="mono" style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600 }}>
+              <span style={{
+                width: 6, height: 6, borderRadius: 99, flexShrink: 0,
+                background: isFinished ? color : "var(--line)",
+                boxShadow: isCurrent ? `0 0 6px ${color}` : "none",
+                transition: "background 0.2s, box-shadow 0.2s",
+              }} />
+              <span style={{ color: isFinished ? color : "var(--fg-4)", letterSpacing: "0.04em" }}>
+                {n.slice(0, 6)}
+              </span>
             </div>
-            <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)", marginTop: 2 }}>
+            <div className="mono" style={{ fontSize: 9, color: "var(--fg-4)", marginTop: 2, paddingLeft: 10 }}>
               {seen > 0 ? `${seen} msg` : "—"}
             </div>
           </div>
@@ -413,7 +445,7 @@ function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
         </div>
 
         {/* Fix All button */}
-        {!isReady && onFix && (
+        {failCount > 0 && onFix && (
           <button
             onClick={onFix}
             disabled={isBusy}

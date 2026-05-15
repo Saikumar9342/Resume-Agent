@@ -185,11 +185,11 @@ function SectionHeader({ label, count, onRewrite, isStreaming }: {
 /* ── Inline editable field ── */
 function EditableText({
   value, onSave, multiline = false, style: styleProp, className,
-  placeholder = "click to edit",
+  placeholder = "click to edit", inputWidth,
 }: {
   value: string; onSave: (v: string) => void;
   multiline?: boolean; style?: React.CSSProperties; className?: string;
-  placeholder?: string;
+  placeholder?: string; inputWidth?: number | string;
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
@@ -204,7 +204,7 @@ function EditableText({
 
   if (editing) {
     const shared: React.CSSProperties = {
-      ...styleProp, width: "100%", background: "color-mix(in oklch, var(--accent) 5%, var(--bg-1))",
+      ...styleProp, width: inputWidth ?? "100%", background: "color-mix(in oklch, var(--accent) 5%, var(--bg-1))",
       border: "1px solid var(--accent-line)", borderRadius: 4, outline: "none",
       fontFamily: "inherit", fontSize: "inherit", color: "inherit", lineHeight: "inherit",
       padding: "2px 6px", resize: "none",
@@ -519,6 +519,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
                       placeholder="Start"
                       onSave={v => patch(c => { const ex = [...c.experience]; ex[ei] = { ...ex[ei], start: v }; return { ...c, experience: ex }; })}
                       style={{ fontSize: 11.5 }}
+                      inputWidth={80}
                     />
                     <span style={{ color: "var(--fg-4)" }}>—</span>
                     <EditableText
@@ -526,6 +527,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
                       placeholder="End"
                       onSave={v => patch(c => { const ex = [...c.experience]; ex[ei] = { ...ex[ei], end: v }; return { ...c, experience: ex }; })}
                       style={{ fontSize: 11.5 }}
+                      inputWidth={80}
                     />
                   </div>
                 </div>
@@ -634,6 +636,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
                   onSave={v => patch(c => { const ed = [...c.education]; ed[i] = { ...ed[i], year: v }; return { ...c, education: ed }; })}
                   style={{ color: "var(--fg-3)", fontSize: 12, flexShrink: 0 }}
                   className="mono"
+                  inputWidth={80}
                 />
               </div>
             ))}
