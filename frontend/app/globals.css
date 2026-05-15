@@ -141,7 +141,8 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
 
 /* Print styles for PDF export */
 @media print {
+  @page { margin: 0; size: A4; }
   body { overflow: visible; height: auto; background: white; color: black; }
+  body > *:not(#resume-print-root) { display: none !important; }
   #resume-print-root { display: block !important; }
-  #app-root { display: none !important; }
 }

@@ -40,7 +40,10 @@ export function Canvas({
   useEffect(() => { scrollToSection(activeSection); }, [activeSection]);
   useEffect(() => { if (ai.streamingSection) scrollToSection(ai.streamingSection); }, [ai.streamingSection]);
 
-  const hasContent = resume && (resume.contact?.name || resume.summary || resume.experience?.length);
+  const hasContent = resume && (
+    resume.contact?.name || resume.contact?.email ||
+    resume.summary || (resume.experience?.length ?? 0) > 0
+  );
 
   return (
     <main style={{
@@ -397,8 +400,8 @@ function sectionStyle(sec: string, streamingSection: string | null, isStreaming:
   const isActive = streamingSection === sec;
   return {
     transition: "filter 0.4s ease, opacity 0.4s ease",
-    filter: isActive ? "none" : "blur(2px)",
-    opacity: isActive ? 1 : 0.35,
+    filter: isActive ? "none" : "blur(1.5px)",
+    opacity: isActive ? 1 : 0.5,
     pointerEvents: "none",
   };
 }
@@ -430,7 +433,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
     }}>
 
       {/* ── Contact ── */}
-      <header data-sec="contact" style={{ marginBottom: 26 }}>
+      <header data-sec="contact" style={{ marginBottom: 26, opacity: 1, filter: "none" }}>
         <EditableText
           value={resume.contact?.name || ""}
           placeholder="Your Name"

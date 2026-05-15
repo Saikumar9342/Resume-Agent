@@ -6,20 +6,40 @@ import { useAuthStore } from "@/store/authStore";
 import { getWsUrl } from "@/lib/api";
 import type { WSMessage, AIRewriteResult, AIActivity } from "@/types/resume";
 
+const IDLE_TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+const PING_INTERVAL_MS = 30_000;
+
 export function useResumeWebSocket(resumeId: string | null, onError?: (msg: string) => void) {
   const wsRef = useRef<WebSocket | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
+  const idleTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const resumeIdRef = useRef(resumeId);
+  resumeIdRef.current = resumeId;
+
   const {
     setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText,
     addActivity, setStreamingSection, appendSectionToken, commitSection, setActiveModel,
   } = useResumeStore();
   const { clearAuth } = useAuthStore();
 
-  useEffect(() => {
-    if (!resumeId) return;
+  const disconnect = useCallback(() => {
+    if (pingRef.current) { clearInterval(pingRef.current); pingRef.current = null; }
+    if (idleTimerRef.current) { clearTimeout(idleTimerRef.current); idleTimerRef.current = null; }
+    if (wsRef.current) {
+      wsRef.current.onclose = null; // prevent auth-clear on intentional close
+      wsRef.current.close(1000, "idle");
+      wsRef.current = null;
+    }
+  }, []);
 
-    const ws = new WebSocket(getWsUrl(resumeId));
+  const connect = useCallback(() => {
+    const id = resumeIdRef.current;
+    if (!id) return;
+    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) return;
+
+    const ws = new WebSocket(getWsUrl(id));
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -30,24 +50,39 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
     ws.onerror = () => console.error("[WS] connection error");
 
     ws.onclose = (event) => {
-      // 4001 = invalid token (set by our backend), 1008 = policy violation (403)
       if (event.code === 4001 || event.code === 1008) {
-        clearAuth();   // wipe stale token → page.tsx will show AuthModal
+        clearAuth();
       }
     };
 
-    const ping = setInterval(() => {
+    pingRef.current = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
         ws.send(JSON.stringify({ type: "ping", payload: {} }));
       }
-    }, 30_000);
+    }, PING_INTERVAL_MS);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return () => {
-      clearInterval(ping);
-      ws.close();
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resumeId]);
+  // Reset idle timer on any activity — called before every send
+  const resetIdle = useCallback(() => {
+    if (idleTimerRef.current) clearTimeout(idleTimerRef.current);
+    idleTimerRef.current = setTimeout(() => {
+      disconnect();
+    }, IDLE_TIMEOUT_MS);
+  }, [disconnect]);
+
+  // Ensure connected + reset idle, then run fn
+  const withConnection = useCallback((fn: () => void) => {
+    connect();
+    // If ws just opened, wait for it
+    const ws = wsRef.current!;
+    if (ws.readyState === WebSocket.CONNECTING) {
+      ws.addEventListener("open", () => { resetIdle(); fn(); }, { once: true });
+    } else {
+      resetIdle();
+      fn();
+    }
+  }, [connect, resetIdle]);
 
   function handleMessage(msg: WSMessage) {
     switch (msg.type) {
@@ -108,27 +143,42 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
     }
   }
 
+  // Connect on mount, disconnect on unmount
+  useEffect(() => {
+    if (!resumeId) return;
+    connect();
+    resetIdle();
+    return () => disconnect();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeId]);
+
   const sendPatch = useCallback((patch: unknown) => {
-    wsRef.current?.send(JSON.stringify({ type: "patch", payload: patch }));
-  }, []);
+    withConnection(() => {
+      wsRef.current?.send(JSON.stringify({ type: "patch", payload: patch }));
+    });
+  }, [withConnection]);
 
   const requestAI = useCallback(
     (rawText: string, jobDescription?: string, section?: string) => {
-      wsRef.current?.send(
-        JSON.stringify({
-          type: "request_ai",
-          payload: { raw_text: rawText, job_description: jobDescription, section },
-        })
-      );
+      withConnection(() => {
+        wsRef.current?.send(
+          JSON.stringify({
+            type: "request_ai",
+            payload: { raw_text: rawText, job_description: jobDescription, section },
+          })
+        );
+      });
     },
-    []
+    [withConnection]
   );
 
   const requestGhost = useCallback((context: string) => {
-    wsRef.current?.send(
-      JSON.stringify({ type: "request_ghost", payload: { context } })
-    );
-  }, []);
+    withConnection(() => {
+      wsRef.current?.send(
+        JSON.stringify({ type: "request_ghost", payload: { context } })
+      );
+    });
+  }, [withConnection]);
 
   const cancelAI = useCallback(() => {
     wsRef.current?.send(JSON.stringify({ type: "cancel_ai", payload: {} }));

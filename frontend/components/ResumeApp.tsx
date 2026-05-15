@@ -19,6 +19,8 @@ import type { VersionEntry } from "@/components/editor/RightRail";
 import { StatusBar } from "@/components/editor/StatusBar";
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { PrintPreview } from "@/components/editor/PrintPreview";
+import { TemplatePicker } from "@/components/editor/TemplatePicker";
+import type { TemplateId } from "@/components/editor/TemplatePicker";
 import type { DiffPatch } from "@/types/resume";
 
 type Screen = "landing" | "editor";
@@ -43,6 +45,8 @@ export function ResumeApp() {
   const [aiError, setAIError] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionEntry[]>([]);
   const [printing, setPrinting] = useState(false);
+  const [template, setTemplate] = useState<TemplateId>("classic");
+  const [showTemplatePicker, setShowTemplatePicker] = useState(false);
 
   const { requestAI, cancelAI, requestGhost } = useResumeWebSocket(resumeId, (msg) => {
     setAIError(msg);
@@ -58,6 +62,14 @@ export function ResumeApp() {
     else if (aiState === "streaming") setAIState("idle");
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ai.isStreaming, ai.pendingResult]);
+
+  // Auto-run ATS when resume loads and has content
+  useEffect(() => {
+    if (resumeId && resume?.content && (resume.content.summary || resume.content.experience?.length)) {
+      handleATSAnalyze();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [resumeId]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -131,7 +143,7 @@ export function ResumeApp() {
   };
 
   const handleExport = () => {
-    if (resume?.content) { setPrinting(true); return; }
+    if (resume?.content) { setShowTemplatePicker(true); return; }
     // fallback: download HTML from backend
     if (!resumeId) return;
     const { token } = useAuthStore.getState();
@@ -184,6 +196,7 @@ export function ResumeApp() {
   const handleAcceptAll = () => {
     acceptAISuggestion();
     setAIState("accepted");
+    setTimeout(() => handleATSAnalyze(), 800);
   };
 
   const handleRejectAll = () => {
@@ -257,7 +270,7 @@ export function ResumeApp() {
         resumeTitle={resume?.title}
         onTitleChange={handleTitleChange}
         onPalette={() => setPaletteOpen(true)}
-        onRunAI={handleAIRewrite}
+        onRunAI={() => handleAIRewrite()}
         onStopAI={() => { cancelAI(); setAIState("idle"); }}
         onHistory={() => setRailTab("versions")}
         onShare={resumeId ? handleShare : undefined}
@@ -311,15 +324,47 @@ export function ResumeApp() {
                 padding: "48px 56px",
                 boxShadow: "0 40px 60px -30px black",
               }}>
-                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>
-                  paste your resume · or start typing
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+                  <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.1em" }}>
+                    paste your resume · or upload a file
+                  </div>
+                  <label style={{
+                    cursor: "pointer", display: "inline-flex", alignItems: "center", gap: 6,
+                    padding: "4px 12px", borderRadius: 5, fontSize: 11, fontFamily: "var(--mono)",
+                    background: "var(--bg-2)", border: "1px solid var(--line)", color: "var(--fg-1)",
+                  }}>
+                    ↑ upload .txt / .pdf / .docx
+                    <input type="file" accept=".txt,.pdf,.docx,text/plain" style={{ display: "none" }}
+                      onChange={async e => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        if (file.type === "application/pdf" || file.name.endsWith(".pdf")) {
+                          // PDF: send to backend for text extraction
+                          const form = new FormData();
+                          form.append("file", file);
+                          const { token: authToken } = useAuthStore.getState();
+                          const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/extract-text`, {
+                            method: "POST", headers: { Authorization: `Bearer ${authToken}` }, body: form,
+                          });
+                          if (res.ok) { const d = await res.json(); setRawText(d.text); markDirty(true); }
+                          else { alert("Could not extract PDF text. Try copying and pasting the text instead."); }
+                        } else {
+                          // Plain text or docx fallback — read as text
+                          const text = await file.text();
+                          setRawText(text);
+                          markDirty(true);
+                        }
+                        e.target.value = "";
+                      }}
+                    />
+                  </label>
                 </div>
                 <textarea
                   value={rawText}
                   onChange={e => { setRawText(e.target.value); markDirty(true); }}
                   placeholder="Paste your resume here to get started. The AI will parse it into sections automatically."
                   style={{
-                    width: "100%", minHeight: 400,
+                    width: "100%", minHeight: 380,
                     fontFamily: "var(--sans)", fontSize: 13, lineHeight: 1.6,
                     color: "var(--fg-1)", background: "transparent",
                     resize: "vertical",
@@ -400,11 +445,21 @@ export function ResumeApp() {
         />
       )}
 
+      {showTemplatePicker && resume?.content && (
+        <TemplatePicker
+          current={template}
+          resume={resume.content}
+          onSelect={(t) => { setTemplate(t); setPrinting(true); }}
+          onClose={() => setShowTemplatePicker(false)}
+        />
+      )}
+
       {printing && resume?.content && (
         <PrintPreview
           resume={resume.content}
           title={resume.title}
-          onClose={() => setPrinting(false)}
+          template={template}
+          onClose={() => { setPrinting(false); setShowTemplatePicker(false); }}
         />
       )}
     </div>
