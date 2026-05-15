@@ -177,63 +177,79 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
 
       {/* Section list */}
       <div style={{ padding: "8px 6px", overflow: "auto", flex: 1 }}>
-        {SECTION_META.map((s) => {
-          const isActive = active === s.id;
-          const heat = heatmap ? sectionHeat(s.id, resume) : null;
-          const heatColor = heat === "red" ? "var(--red)" : heat === "amber" ? "var(--amber)" : heat === "green" ? "var(--green)" : null;
-
-          // Hide certifications if empty
-          if (s.id === "certifications" && !(resume?.certifications?.length)) return null;
-
-          return (
-            <button
-              key={s.id}
-              onClick={() => onSelect(s.id)}
-              className="mono"
-              style={{
-                width: "100%", display: "flex", alignItems: "center", gap: 8,
-                padding: "5px 8px", fontSize: 12, borderRadius: 5,
-                background: isActive ? "var(--bg-3)" : "transparent",
-                color: isActive ? "var(--fg-0)" : "var(--fg-1)",
-                cursor: "pointer", textAlign: "left", border: 0, position: "relative",
-              }}
-            >
-              {isActive && <span style={{ position: "absolute", left: 0, top: 4, bottom: 4, width: 2, background: "var(--accent)", borderRadius: 1 }} />}
-              <Icon name={s.icon} size={13} />
-              <span style={{ flex: 1 }}>{s.label}</span>
-              {heatColor && <span style={{ width: 6, height: 6, borderRadius: 99, background: heatColor }} />}
-            </button>
-          );
-        })}
-
-        {/* sub items under experience */}
-        {resume?.experience && (
-          <div style={{ marginLeft: 18, marginTop: 4, marginBottom: 8, borderLeft: "1px solid var(--line-soft)", paddingLeft: 8 }}>
-            {resume.experience.map((exp, i) => (
-              <div key={i} className="mono" style={{
-                padding: "3px 8px", fontSize: 11.5,
-                color: "var(--fg-2)", display: "flex", alignItems: "center", gap: 6,
-              }}>
-                <Icon name="doc" size={11} />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {(exp.company || "company").toLowerCase()}.md
-                </span>
-              </div>
-            ))}
+        {!resume ? (
+          <div className="mono" style={{ padding: "16px 10px", fontSize: 11, color: "var(--fg-4)", lineHeight: 1.6 }}>
+            Upload or paste a resume to see sections.
           </div>
+        ) : (
+          <>
+            {SECTION_META.map((s) => {
+              // Only show sections that have actual content
+              if (s.id === "contact" && !resume.contact?.name && !resume.contact?.email) return null;
+              if (s.id === "summary" && !resume.summary) return null;
+              if (s.id === "experience" && !(resume.experience?.length)) return null;
+              if (s.id === "education" && !(resume.education?.length)) return null;
+              if (s.id === "skills" && !(resume.skills?.technical?.length)) return null;
+              if (s.id === "certifications" && !(resume.certifications?.length)) return null;
+              if (s.id === "projects" && !(resume.projects?.length)) return null;
+
+              const isActive = active === s.id;
+              const heat = heatmap ? sectionHeat(s.id, resume) : null;
+              const heatColor = heat === "red" ? "var(--red)" : heat === "amber" ? "var(--amber)" : heat === "green" ? "var(--green)" : null;
+
+              return (
+                <button
+                  key={s.id}
+                  onClick={() => onSelect(s.id)}
+                  className="mono"
+                  style={{
+                    width: "100%", display: "flex", alignItems: "center", gap: 8,
+                    padding: "5px 8px", fontSize: 12, borderRadius: 5,
+                    background: isActive ? "var(--bg-3)" : "transparent",
+                    color: isActive ? "var(--fg-0)" : "var(--fg-1)",
+                    cursor: "pointer", textAlign: "left", border: 0, position: "relative",
+                  }}
+                >
+                  {isActive && <span style={{ position: "absolute", left: 0, top: 4, bottom: 4, width: 2, background: "var(--accent)", borderRadius: 1 }} />}
+                  <Icon name={s.icon} size={13} />
+                  <span style={{ flex: 1 }}>{s.label}</span>
+                  {heatColor && <span style={{ width: 6, height: 6, borderRadius: 99, background: heatColor }} />}
+                </button>
+              );
+            })}
+
+            {/* sub items under experience */}
+            {resume.experience && resume.experience.length > 0 && (
+              <div style={{ marginLeft: 18, marginTop: 4, marginBottom: 8, borderLeft: "1px solid var(--line-soft)", paddingLeft: 8 }}>
+                {resume.experience.map((exp, i) => (
+                  <div key={i} className="mono" style={{
+                    padding: "3px 8px", fontSize: 11.5,
+                    color: "var(--fg-2)", display: "flex", alignItems: "center", gap: 6,
+                  }}>
+                    <Icon name="doc" size={11} />
+                    <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {(exp.company || "company").toLowerCase()}.md
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* footer outline */}
-      <div style={{ borderTop: "1px solid var(--line)", padding: "10px 12px" }}>
-        <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>outline</div>
-        <Mini label="contact" v={resume?.contact?.name ? "header" : "—"} />
-        <Mini label="summary" v={resume?.summary ? `${resume.summary.split(/\s+/).filter(Boolean).length} words` : "—"} />
-        <Mini label="experience" v={resume?.experience?.length ? `${resume.experience.length} roles` : "—"} />
-        <Mini label="education" v={resume?.education?.length ? `${resume.education.length} deg.` : "—"} />
-        <Mini label="skills" v={resume?.skills?.technical?.length ? `${resume.skills.technical.length} items` : "—"} />
-        <Mini label="projects" v={resume?.projects?.length ? `${resume.projects.length} listed` : "—"} />
-      </div>
+      {/* footer outline — only shown when resume has content */}
+      {resume && (
+        <div style={{ borderTop: "1px solid var(--line)", padding: "10px 12px" }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>outline</div>
+          {resume.contact?.name && <Mini label="contact" v="header" />}
+          {resume.summary && <Mini label="summary" v={`${resume.summary.split(/\s+/).filter(Boolean).length} words`} />}
+          {(resume.experience?.length ?? 0) > 0 && <Mini label="experience" v={`${resume.experience!.length} roles`} />}
+          {(resume.education?.length ?? 0) > 0 && <Mini label="education" v={`${resume.education!.length} deg.`} />}
+          {(resume.skills?.technical?.length ?? 0) > 0 && <Mini label="skills" v={`${resume.skills!.technical!.length} items`} />}
+          {(resume.projects?.length ?? 0) > 0 && <Mini label="projects" v={`${resume.projects!.length} listed`} />}
+        </div>
+      )}
     </aside>
   );
 }

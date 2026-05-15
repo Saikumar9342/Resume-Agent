@@ -328,6 +328,9 @@ export function ResumeApp() {
           onNewResume={() => {
             setResumeId(null);
             setRawText("");
+            setResume(null);
+            setATS(null);
+            markDirty(false);
             setScreen("editor");
           }}
         />

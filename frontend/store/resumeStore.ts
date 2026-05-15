@@ -24,7 +24,7 @@ interface ResumeStore {
   editor: EditorState;
   ats: ATSAnalysis | null;
 
-  setResume: (r: Resume) => void;
+  setResume: (r: Resume | null) => void;
   updateContent: (content: ResumeContent) => void;
   setResumeTitle: (title: string) => void;
   setAIStreaming: (v: boolean) => void;
@@ -40,7 +40,7 @@ interface ResumeStore {
   acceptAISuggestion: () => void;
   rejectAISuggestion: () => void;
   acceptPatch: (patch: DiffPatch) => void;
-  setATS: (a: ATSAnalysis) => void;
+  setATS: (a: ATSAnalysis | null) => void;
   setActiveSection: (s: string | null) => void;
   markDirty: (v: boolean) => void;
 }
@@ -64,7 +64,7 @@ export const useResumeStore = create<ResumeStore>()(
     setResume: (r) =>
       set((s) => {
         s.resume = r;
-        s.ats = r.ats_analysis ?? null;
+        s.ats = r?.ats_analysis ?? null;
       }),
 
     updateContent: (content) =>
@@ -181,7 +181,7 @@ export const useResumeStore = create<ResumeStore>()(
     setATS: (a) =>
       set((s) => {
         s.ats = a;
-        if (s.resume) s.resume.ats_score = a.score;
+        if (s.resume && a) s.resume.ats_score = a.score;
       }),
 
     setActiveSection: (sec) =>
