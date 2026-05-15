@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { Icon, Pill } from "@/components/ui/Icon";
 import { useAuthStore } from "@/store/authStore";
+import { modKey } from "@/lib/keys";
 
 interface LandingProps {
   onBoot: () => void;
@@ -10,6 +11,7 @@ interface LandingProps {
 
 export function Landing({ onBoot }: LandingProps) {
   const { user, clearAuth } = useAuthStore();
+  const mod = modKey();
 
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
@@ -157,7 +159,7 @@ export function Landing({ onBoot }: LandingProps) {
         fontSize: 11,
       }}>
         <div className="mono" style={{ display: "flex", gap: 14, color: "var(--fg-3)" }}>
-          <span><span className="kbd">⌘</span> <span className="kbd">K</span> commands</span>
+          <span><span className="kbd">{mod}</span><span className="kbd">K</span> commands</span>
           <span><span className="kbd">↵</span> boot</span>
         </div>
       </footer>

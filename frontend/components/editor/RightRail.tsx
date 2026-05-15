@@ -2,9 +2,10 @@
 
 import { useRef, useEffect } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
-import type { ATSAnalysis, AIActivity, AIRewriteResult, DiffPatch } from "@/types/resume";
+import type { ATSAnalysis, AIActivity, AIRewriteResult, DiffPatch, ResumeContent } from "@/types/resume";
+import { CoverLetterPane } from "./CoverLetterPane";
 
-type RailTab = "ai" | "ats" | "versions";
+type RailTab = "ai" | "ats" | "versions" | "cover";
 
 interface RightRailProps {
   tab: RailTab;
@@ -23,6 +24,9 @@ interface RightRailProps {
   setHeatmap: (v: boolean) => void;
   versions: VersionEntry[];
   onRestoreVersion: (id: string) => void;
+  resumeId: string | null;
+  resume: ResumeContent | null;
+  jd: string;
 }
 
 export interface VersionEntry {
@@ -39,6 +43,7 @@ export function RightRail({
   onAcceptAll, onRejectAll, onAcceptPatch,
   ats, heatmap, setHeatmap,
   versions, onRestoreVersion,
+  resumeId, resume, jd,
 }: RightRailProps) {
   const diffCount = pendingResult?.diff_patches.length ?? 0;
   const atsScore = ats?.score ?? null;
@@ -61,6 +66,7 @@ export function RightRail({
         <RailTabBtn id="ats" current={tab} setTab={setTab} icon="target" label="ats"
           badge={atsScore !== null ? (atsScore >= 80 ? "OK" : "!") : null} />
         <RailTabBtn id="versions" current={tab} setTab={setTab} icon="branch" label="versions" />
+        <RailTabBtn id="cover" current={tab} setTab={setTab} icon="doc" label="cover" />
         <div style={{ flex: 1 }} />
         <button className="btn btn-ghost" style={{ width: 28, height: 28, justifyContent: "center", padding: 0, marginRight: 6 }}>
           <Icon name="settings" size={13} />
@@ -84,6 +90,7 @@ export function RightRail({
         )}
         {tab === "ats" && <ATSPane ats={ats} heatmap={heatmap} setHeatmap={setHeatmap} />}
         {tab === "versions" && <VersionsPane versions={versions} onRestore={onRestoreVersion} />}
+        {tab === "cover" && <CoverLetterPane resumeId={resumeId} resume={resume} jd={jd} />}
       </div>
     </aside>
   );
@@ -234,7 +241,7 @@ function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, ac
         <EmptyState
           icon="terminal"
           title="Idle"
-          msg="Press ⌘↵ or click rewrite to run the agent. Output streams in as patches you can accept individually."
+          msg="Press Ctrl+Enter or click rewrite to run the agent. Output streams in as patches you can accept individually."
         />
       )}
 
@@ -410,7 +417,7 @@ function ATSPane({ ats, heatmap, setHeatmap }: { ats: ATSAnalysis | null; heatma
         >
           <Icon name="flame" size={12} />
           {heatmap ? "hide heatmap" : "show heatmap on resume"}
-          <span className="kbd">⌘H</span>
+          <span className="kbd">Ctrl+H</span>
         </button>
       </div>
 

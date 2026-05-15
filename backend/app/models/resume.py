@@ -16,5 +16,6 @@ class Resume(Base):
     ats_score = Column(Float, nullable=True)
     ats_analysis = Column(JSON, nullable=True)
     version = Column(String(50), default="1.0")
+    share_token = Column(String(64), nullable=True, unique=True, index=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())

@@ -1,7 +1,7 @@
 "use client";
 
 import { Icon } from "@/components/ui/Icon";
-import type { ATSAnalysis } from "@/types/resume";
+import type { ATSAnalysis, ResumeContent } from "@/types/resume";
 
 interface StatusBarProps {
   ats: ATSAnalysis | null;
@@ -10,10 +10,24 @@ interface StatusBarProps {
   heatmap: boolean;
   version?: string;
   errorCount?: number;
+  resume?: ResumeContent | null;
 }
 
-export function StatusBar({ ats, aiState, wordCount, heatmap, version, errorCount = 0 }: StatusBarProps) {
+function completeness(c: ResumeContent): number {
+  let pts = 0, total = 7;
+  if (c.contact?.name) pts++;
+  if (c.contact?.email) pts++;
+  if (c.summary && c.summary.length > 20) pts++;
+  if (c.experience && c.experience.length > 0) pts++;
+  if (c.education && c.education.length > 0) pts++;
+  if (c.skills?.technical && c.skills.technical.length > 0) pts++;
+  if (c.projects && c.projects.length > 0) pts++;
+  return Math.round((pts / total) * 100);
+}
+
+export function StatusBar({ ats, aiState, wordCount, heatmap, version, errorCount = 0, resume }: StatusBarProps) {
   const score = ats?.score ?? null;
+  const profileScore = resume ? completeness(resume) : null;
   return (
     <footer className="mono" style={{
       height: 26,
@@ -33,7 +47,16 @@ export function StatusBar({ ats, aiState, wordCount, heatmap, version, errorCoun
         <span style={{ color: "var(--fg-3)" }}>·</span>
         <span>heatmap {heatmap ? <span style={{ color: "var(--accent)" }}>on</span> : "off"}</span>
         {score !== null && (
-          <span>ats <span style={{ color: score >= 80 ? "var(--green)" : score >= 60 ? "var(--amber)" : "var(--red)" }}>{score}</span></span>
+          <>
+            <span style={{ color: "var(--fg-3)" }}>·</span>
+            <span>ats <span style={{ color: score >= 80 ? "var(--green)" : score >= 60 ? "var(--amber)" : "var(--red)" }}>{score}</span></span>
+          </>
+        )}
+        {profileScore !== null && (
+          <>
+            <span style={{ color: "var(--fg-3)" }}>·</span>
+            <span title="Profile completeness">profile <span style={{ color: profileScore >= 85 ? "var(--green)" : profileScore >= 50 ? "var(--amber)" : "var(--red)" }}>{profileScore}%</span></span>
+          </>
         )}
       </div>
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>

@@ -3,6 +3,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
+import secrets
 
 from app.models.resume import Resume
 from app.models.user import User
@@ -10,6 +11,7 @@ from app.models.schemas import ResumeCreate, ResumeResponse, RewriteRequest, Rew
 from app.services.database import get_db
 from app.services.auth import get_current_user
 from app.services.diff import generate_diff_patches
+from app.services.llm import llm_invoke
 from app.agents.pipeline import run_pipeline
 
 router = APIRouter()
@@ -236,3 +238,77 @@ async def export_resume(
         content=html,
         headers={"Content-Disposition": f'attachment; filename="{filename}.html"'},
     )
+
+
+@router.post("/resumes/{resume_id}/cover-letter")
+async def generate_cover_letter(
+    resume_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    job_description = payload.get("job_description", "")
+    company = payload.get("company", "the company")
+    role = payload.get("role", "this role")
+
+    content = resume.content or {}
+    contact = content.get("contact", {})
+    name = contact.get("name", "")
+    summary = content.get("summary", "")
+    experience = content.get("experience", [])
+    skills = content.get("skills", {}).get("technical", [])
+
+    exp_text = "\n".join([
+        f"- {e.get('title')} at {e.get('company')} ({e.get('start')}–{e.get('end')}): " +
+        "; ".join(e.get("bullets", [])[:2])
+        for e in experience[:3]
+    ])
+
+    prompt = f"""Write a professional cover letter for {name} applying for the role of {role} at {company}.
+
+Resume summary: {summary}
+
+Key experience:
+{exp_text}
+
+Top skills: {", ".join(skills[:10])}
+
+Job description:
+{job_description[:1500]}
+
+Instructions:
+- Write 3–4 paragraphs: opener, relevant experience, why this company/role, closing
+- Professional but not robotic — show personality
+- Reference specific achievements from the resume
+- Do NOT use placeholders like [Your Name] — use the actual name from the resume
+- Return ONLY the cover letter text, no subject line, no headers"""
+
+    from langchain_core.messages import HumanMessage
+    text = await llm_invoke([HumanMessage(content=prompt)])
+    return {"cover_letter": text, "name": name, "company": company, "role": role}
+
+
+@router.post("/resumes/{resume_id}/share")
+async def create_share_link(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+    if not resume.share_token:
+        resume.share_token = secrets.token_urlsafe(16)
+        await db.commit()
+        await db.refresh(resume)
+    return {"token": resume.share_token}

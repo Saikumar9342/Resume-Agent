@@ -23,7 +23,7 @@ import type { DiffPatch } from "@/types/resume";
 
 type Screen = "landing" | "editor";
 type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
-type RailTab = "ai" | "ats" | "versions";
+type RailTab = "ai" | "ats" | "versions" | "cover";
 
 export function ResumeApp() {
   const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS, setResumeTitle } = useResumeStore();
@@ -146,6 +146,21 @@ export function ResumeApp() {
     }).catch(e => console.error("Export failed", e));
   };
 
+  const handleShare = async () => {
+    if (!resumeId) return;
+    const { token: authToken } = useAuthStore.getState();
+    try {
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/share`,
+        { method: "POST", headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      const data = await res.json();
+      const link = `${window.location.origin}/r/${data.token}`;
+      await navigator.clipboard.writeText(link);
+      alert(`Share link copied!\n\n${link}`);
+    } catch { alert("Failed to generate share link."); }
+  };
+
   const handleTitleChange = async (title: string) => {
     if (!resumeId || !title.trim()) return;
     setResumeTitle(title.trim());
@@ -245,6 +260,7 @@ export function ResumeApp() {
         onRunAI={handleAIRewrite}
         onStopAI={() => { cancelAI(); setAIState("idle"); }}
         onHistory={() => setRailTab("versions")}
+        onShare={resumeId ? handleShare : undefined}
         onExport={handleExport}
         onBack={() => setScreen("landing")}
         aiState={aiState}
@@ -361,6 +377,9 @@ export function ResumeApp() {
           setHeatmap={setHeatmap}
           versions={versions}
           onRestoreVersion={handleRestoreVersion}
+          resumeId={resumeId}
+          resume={resume?.content ?? null}
+          jd={jd}
         />
       </div>
 
@@ -371,6 +390,7 @@ export function ResumeApp() {
         heatmap={heatmap}
         version={resume?.version ? `v${resume.version}` : undefined}
         errorCount={ats ? ats.checkpoints.filter(c => !c.passed).length : 0}
+        resume={resume?.content ?? null}
       />
 
       {paletteOpen && (

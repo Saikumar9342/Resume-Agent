@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { Icon } from "@/components/ui/Icon";
+import { modKey } from "@/lib/keys";
 
 interface Command {
   id: string;
@@ -9,18 +10,6 @@ interface Command {
   shortcut?: string;
   group: string;
 }
-
-const COMMANDS: Command[] = [
-  { id: "ai.rewrite",      label: "Run AI rewrite",             shortcut: "⌘ ⏎",  group: "AI" },
-  { id: "ats.run",         label: "Re-run ATS analysis",         shortcut: "⌘ A",  group: "AI" },
-  { id: "ats.heatmap",     label: "Toggle ATS heatmap",          shortcut: "⌘ H",  group: "View" },
-  { id: "view.versions",   label: "Show version history",        shortcut: "⌘ Y",  group: "View" },
-  { id: "section.summary", label: "Jump to: Summary",            shortcut: "1",    group: "Navigation" },
-  { id: "section.exp",     label: "Jump to: Experience",         shortcut: "2",    group: "Navigation" },
-  { id: "section.edu",     label: "Jump to: Education",          shortcut: "3",    group: "Navigation" },
-  { id: "section.skills",  label: "Jump to: Skills",             shortcut: "4",    group: "Navigation" },
-  { id: "export.pdf",      label: "Export to PDF",               shortcut: "⌘ E",  group: "File" },
-];
 
 interface CommandPaletteProps {
   onClose: () => void;
@@ -31,6 +20,20 @@ export function CommandPalette({ onClose, onCommand }: CommandPaletteProps) {
   const [q, setQ] = useState("");
   const [hi, setHi] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  const mod = modKey();
+  const COMMANDS = useMemo<Command[]>(() => [
+    { id: "ai.rewrite",      label: "Run AI rewrite",          shortcut: `${mod}+Enter`, group: "AI" },
+    { id: "ats.run",         label: "Re-run ATS analysis",     shortcut: `${mod}+A`,     group: "AI" },
+    { id: "ats.heatmap",     label: "Toggle ATS heatmap",      shortcut: `${mod}+H`,     group: "View" },
+    { id: "view.versions",   label: "Show version history",    shortcut: `${mod}+Y`,     group: "View" },
+    { id: "cover.letter",    label: "Generate cover letter",   shortcut: "",             group: "AI" },
+    { id: "section.summary", label: "Jump to: Summary",        shortcut: "1",            group: "Navigation" },
+    { id: "section.exp",     label: "Jump to: Experience",     shortcut: "2",            group: "Navigation" },
+    { id: "section.edu",     label: "Jump to: Education",      shortcut: "3",            group: "Navigation" },
+    { id: "section.skills",  label: "Jump to: Skills",         shortcut: "4",            group: "Navigation" },
+    { id: "export.pdf",      label: "Export / Print resume",   shortcut: `${mod}+E`,     group: "File" },
+    { id: "theme.toggle",    label: "Toggle dark/light theme", shortcut: `${mod}+J`,     group: "View" },
+  ], [mod]);
 
   const filtered = COMMANDS.filter(c =>
     !q || c.label.toLowerCase().includes(q.toLowerCase()) || c.group.toLowerCase().includes(q.toLowerCase())

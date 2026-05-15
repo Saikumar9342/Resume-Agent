@@ -5,7 +5,7 @@ from typing import Optional
 
 from app.config import settings
 from app.services.database import init_db
-from app.api.v1 import resumes, ats, auth
+from app.api.v1 import resumes, ats, auth, share
 from app.websockets.handler import ws_connect
 
 
@@ -33,6 +33,7 @@ app.add_middleware(
 app.include_router(auth.router, prefix="/api/v1")
 app.include_router(resumes.router, prefix="/api/v1", tags=["resumes"])
 app.include_router(ats.router, prefix="/api/v1", tags=["ats"])
+app.include_router(share.router, tags=["share"])
 
 
 @app.websocket("/ws/resume/{resume_id}")

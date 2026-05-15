@@ -3,6 +3,8 @@
 import { useState, useRef } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
 import { useAuthStore } from "@/store/authStore";
+import { useThemeStore } from "@/store/themeStore";
+import { modKey } from "@/lib/keys";
 
 interface TopBarProps {
   resumeTitle?: string;
@@ -12,13 +14,16 @@ interface TopBarProps {
   onStopAI?: () => void;
   onHistory: () => void;
   onExport: () => void;
+  onShare?: () => void;
   onBack: () => void;
   aiState: "idle" | "streaming" | "review" | "accepted";
   isDirty: boolean;
 }
 
-export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopAI, onHistory, onExport, onBack, aiState, isDirty }: TopBarProps) {
+export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopAI, onHistory, onExport, onShare, onBack, aiState, isDirty }: TopBarProps) {
   const { user, clearAuth } = useAuthStore();
+  const { theme, toggleTheme } = useThemeStore();
+  const mod = modKey();
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState("");
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +110,7 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
           <span>Search files, jump, run commands…</span>
         </span>
         <span style={{ display: "flex", gap: 4 }}>
-          <span className="kbd">⌘</span>
+          <span className="kbd">{mod}</span>
           <span className="kbd">K</span>
         </span>
       </button>
@@ -121,6 +126,14 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
               <Icon name="x" size={11} /> sign out
             </button>
           </>
+        )}
+        <button onClick={toggleTheme} className="btn btn-ghost mono" title="Toggle theme (Ctrl+J)">
+          {theme === "dark" ? "☀" : "◑"}
+        </button>
+        {onShare && (
+          <button onClick={onShare} className="btn btn-ghost mono" title="Share resume (read-only link)">
+            <Icon name="branch" size={11} /> share
+          </button>
         )}
         <button onClick={onExport} className="btn btn-ghost mono">
           <Icon name="download" size={11} /> export
@@ -149,7 +162,7 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
             borderColor: "color-mix(in oklch, var(--bg-0) 50%, transparent)",
             color: "var(--bg-0)",
             background: "color-mix(in oklch, var(--bg-0) 18%, var(--accent))",
-          }}>⌘↵</span>
+          }}>{mod}↵</span>
         </button>
       </div>
     </header>
