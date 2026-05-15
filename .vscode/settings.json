@@ -1,5 +1,7 @@
 {
   "git.repositoryPaths": ["e:\\2. Projects\\6. Resume Agent"],
   "git.detectSubmodules": false,
-  "git.openRepositoryInParentFolders": "never"
+  "git.openRepositoryInParentFolders": "never",
+  "python.defaultInterpreterPath": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe",
+  "python.analysis.extraPaths": ["${workspaceFolder}\\backend"]
 }
