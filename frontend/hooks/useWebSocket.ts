@@ -10,8 +10,10 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
   const wsRef = useRef<WebSocket | null>(null);
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
-  const { setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText, addActivity } =
-    useResumeStore();
+  const {
+    setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText,
+    addActivity, setStreamingSection, appendSectionToken, commitSection,
+  } = useResumeStore();
   const { clearAuth } = useAuthStore();
 
   useEffect(() => {
@@ -57,6 +59,22 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
       case "ai_activity": {
         const { node, message } = msg.payload as { node: AIActivity["node"]; message: string };
         addActivity({ node, message });
+        break;
+      }
+
+      case "section_stream_start":
+        setStreamingSection((msg.payload as { section: string }).section);
+        break;
+
+      case "section_token": {
+        const { section, token } = msg.payload as { section: string; token: string };
+        appendSectionToken(section, token);
+        break;
+      }
+
+      case "section_done": {
+        const { section, content } = msg.payload as { section: string; content: unknown };
+        commitSection(section, content);
         break;
       }
 

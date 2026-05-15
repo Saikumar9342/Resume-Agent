@@ -1,21 +1,25 @@
 """
 WebSocket handler for /ws/resume/{id}.
-Supports:
-  - patch: apply content patch from client, broadcast to other sessions
-  - request_ai: trigger streaming AI suggestion with live activity messages
-  - request_ghost: get inline ghost-text completion
-  - cancel_ai: cancel a running AI pipeline
+Messages sent to client:
+  ai_stream_start       — pipeline began
+  ai_activity           — node status log line
+  section_stream_start  — {section: str} — about to stream this section
+  section_token         — {section: str, token: str} — word-by-word
+  section_done          — {section: str, content: any} — final value for section
+  ai_suggestion         — full result + diff patches
+  ai_cancelled          — user cancelled
+  ai_error              — pipeline failed
 """
 
 import asyncio
+import re
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, Optional
 from app.services.auth import decode_token
-
 from app.agents.pipeline import run_pipeline
 from app.services.diff import generate_diff_patches
-from app.config import settings
-from langchain_google_genai import ChatGoogleGenerativeAI
+from app.services.llm import llm_invoke
+from langchain_core.messages import HumanMessage
 
 _connections: Dict[str, set] = {}
 
@@ -36,64 +40,121 @@ async def ws_connect(resume_id: str, ws: WebSocket, token: Optional[str] = None)
         _connections[resume_id].discard(ws)
 
 
-async def _broadcast(resume_id: str, message: dict, exclude: WebSocket = None):
-    dead = set()
-    for ws in _connections.get(resume_id, set()):
-        if ws is exclude:
+async def _stream_section(ws: WebSocket, section: str, content: str, delay: float = 0.03):
+    """Stream a section's text word-by-word to the client."""
+    await ws.send_json({"type": "section_stream_start", "payload": {"section": section}})
+    words = re.split(r'(\s+)', content)
+    for word in words:
+        if word:
+            await ws.send_json({"type": "section_token", "payload": {"section": section, "token": word}})
+            await asyncio.sleep(delay)
+
+
+async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section: Optional[str]):
+    await ws.send_json({"type": "ai_stream_start", "payload": {}})
+
+    async def on_activity(node: str, message: str):
+        await ws.send_json({"type": "ai_activity", "payload": {"node": node, "message": message}})
+
+    # Run full pipeline (extraction + analysis + optimization + validation)
+    state = await run_pipeline(
+        raw_text=raw_text,
+        job_description=job_desc,
+        section=section,
+        on_activity=on_activity,
+    )
+
+    final = state.get("validated") or state.get("optimized") or {}
+    structured = state.get("structured", {})
+
+    # Stream each section word-by-word in order
+    sections_order = ["summary", "experience", "education", "skills", "projects"]
+
+    for sec in sections_order:
+        val = final.get(sec)
+        if not val:
             continue
-        try:
-            await ws.send_json(message)
-        except Exception:
-            dead.add(ws)
-    _connections[resume_id] -= dead
+
+        if sec == "summary" and isinstance(val, str):
+            await _stream_section(ws, sec, val)
+            await ws.send_json({"type": "section_done", "payload": {"section": sec, "content": val}})
+
+        elif sec == "experience" and isinstance(val, list):
+            await ws.send_json({"type": "section_stream_start", "payload": {"section": sec}})
+            for i, job in enumerate(val):
+                bullets = job.get("bullets", [])
+                streamed_bullets = []
+                for bullet in bullets:
+                    words = re.split(r'(\s+)', bullet)
+                    token_buf = ""
+                    for word in words:
+                        if word:
+                            token_buf += word
+                            await ws.send_json({"type": "section_token", "payload": {"section": sec, "token": word}})
+                            await asyncio.sleep(0.025)
+                    streamed_bullets.append(bullet)
+                val[i] = {**job, "bullets": streamed_bullets}
+            await ws.send_json({"type": "section_done", "payload": {"section": sec, "content": val}})
+
+        elif sec == "skills":
+            tech = val.get("technical", []) if isinstance(val, dict) else []
+            await ws.send_json({"type": "section_stream_start", "payload": {"section": sec}})
+            for skill in tech:
+                await ws.send_json({"type": "section_token", "payload": {"section": sec, "token": skill}})
+                await asyncio.sleep(0.06)
+            await ws.send_json({"type": "section_done", "payload": {"section": sec, "content": val}})
+
+        elif sec == "projects" and isinstance(val, list):
+            await ws.send_json({"type": "section_stream_start", "payload": {"section": sec}})
+            for proj in val:
+                desc = proj.get("description", "")
+                for word in re.split(r'(\s+)', desc):
+                    if word:
+                        await ws.send_json({"type": "section_token", "payload": {"section": sec, "token": word}})
+                        await asyncio.sleep(0.03)
+            await ws.send_json({"type": "section_done", "payload": {"section": sec, "content": val}})
+
+        elif sec == "education" and isinstance(val, list):
+            await ws.send_json({"type": "section_stream_start", "payload": {"section": sec}})
+            await asyncio.sleep(0.2)
+            await ws.send_json({"type": "section_done", "payload": {"section": sec, "content": val}})
+
+    # Also send contact if changed
+    contact = final.get("contact")
+    if contact:
+        await ws.send_json({"type": "section_done", "payload": {"section": "contact", "content": contact}})
+
+    # Final full suggestion + diff patches
+    patches = generate_diff_patches(structured, final)
+    await ws.send_json({
+        "type": "ai_suggestion",
+        "payload": {
+            "suggested": final,
+            "diff_patches": patches,
+            "reasoning": state.get("reasoning", ""),
+        },
+    })
 
 
 async def _handle(resume_id: str, ws: WebSocket):
-    llm_stream = ChatGoogleGenerativeAI(
-        model=settings.gemini_model,
-        google_api_key=settings.google_api_key,
-        temperature=0.4,
-    )
-
     ai_task: Optional[asyncio.Task] = None
-
-    async def _run_ai(raw_text: str, job_desc: Optional[str], section: Optional[str]):
-        await ws.send_json({"type": "ai_stream_start", "payload": {}})
-
-        async def on_activity(node: str, message: str):
-            await ws.send_json({
-                "type": "ai_activity",
-                "payload": {"node": node, "message": message},
-            })
-
-        state = await run_pipeline(
-            raw_text=raw_text,
-            job_description=job_desc,
-            section=section,
-            on_activity=on_activity,
-        )
-
-        suggested = state.get("validated") or state.get("optimized") or {}
-        patches = generate_diff_patches(state.get("structured", {}), suggested)
-
-        await ws.send_json({
-            "type": "ai_suggestion",
-            "payload": {
-                "suggested": suggested,
-                "diff_patches": patches,
-                "reasoning": state.get("reasoning", ""),
-            },
-        })
 
     async for data in ws.iter_json():
         msg_type = data.get("type")
         payload = data.get("payload", {})
 
         if msg_type == "patch":
-            await _broadcast(resume_id, {"type": "patch", "payload": payload}, exclude=ws)
+            dead = set()
+            for other in _connections.get(resume_id, set()):
+                if other is ws:
+                    continue
+                try:
+                    await other.send_json({"type": "patch", "payload": payload})
+                except Exception:
+                    dead.add(other)
+            _connections[resume_id] -= dead
 
         elif msg_type == "request_ai":
-            # Cancel any already-running pipeline
             if ai_task and not ai_task.done():
                 ai_task.cancel()
 
@@ -101,8 +162,7 @@ async def _handle(resume_id: str, ws: WebSocket):
             job_desc = payload.get("job_description")
             section = payload.get("section")
 
-            ai_task = asyncio.create_task(_run_ai(raw_text, job_desc, section))
-
+            ai_task = asyncio.create_task(_run_ai(ws, raw_text, job_desc, section))
             try:
                 await ai_task
             except asyncio.CancelledError:
@@ -118,15 +178,15 @@ async def _handle(resume_id: str, ws: WebSocket):
         elif msg_type == "request_ghost":
             context = payload.get("context", "")
             prompt = f'Complete this resume bullet point naturally (max 15 words, no newline): "{context}"'
-
-            tokens = []
-            async for chunk in llm_stream.astream(prompt):
-                token = chunk.content
-                if token:
-                    tokens.append(token)
-                    await ws.send_json({"type": "ghost_token", "payload": {"token": token}})
-
-            await ws.send_json({"type": "ghost_done", "payload": {"text": "".join(tokens)}})
+            try:
+                text = await llm_invoke([HumanMessage(content=prompt)])
+                for word in re.split(r'(\s+)', text):
+                    if word:
+                        await ws.send_json({"type": "ghost_token", "payload": {"token": word}})
+                        await asyncio.sleep(0.02)
+                await ws.send_json({"type": "ghost_done", "payload": {"text": text}})
+            except Exception as e:
+                await ws.send_json({"type": "ghost_done", "payload": {"text": ""}})
 
         elif msg_type == "ping":
             await ws.send_json({"type": "pong", "payload": {}})

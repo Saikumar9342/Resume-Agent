@@ -4,6 +4,8 @@ import type { Resume, ResumeContent, DiffPatch, ATSAnalysis, AIRewriteResult, AI
 
 interface AIState {
   isStreaming: boolean;
+  streamingSection: string | null;   // which section is currently animating
+  sectionTokens: Record<string, string>; // accumulated tokens per section while streaming
   pendingResult: AIRewriteResult | null;
   ghostText: string;
   reasoning: string;
@@ -24,6 +26,9 @@ interface ResumeStore {
   setResume: (r: Resume) => void;
   updateContent: (content: ResumeContent) => void;
   setAIStreaming: (v: boolean) => void;
+  setStreamingSection: (section: string | null) => void;
+  appendSectionToken: (section: string, token: string) => void;
+  commitSection: (section: string, content: unknown) => void;
   setPendingAIResult: (result: AIRewriteResult | null) => void;
   appendGhostToken: (token: string) => void;
   clearGhostText: () => void;
@@ -40,7 +45,15 @@ interface ResumeStore {
 export const useResumeStore = create<ResumeStore>()(
   immer((set) => ({
     resume: null,
-    ai: { isStreaming: false, pendingResult: null, ghostText: "", reasoning: "", activities: [] },
+    ai: {
+      isStreaming: false,
+      streamingSection: null,
+      sectionTokens: {},
+      pendingResult: null,
+      ghostText: "",
+      reasoning: "",
+      activities: [],
+    },
     editor: { activeSection: null, isDirty: false },
     ats: null,
 
@@ -61,7 +74,35 @@ export const useResumeStore = create<ResumeStore>()(
     setAIStreaming: (v) =>
       set((s) => {
         s.ai.isStreaming = v;
-        if (v) s.ai.activities = [];
+        if (v) {
+          s.ai.activities = [];
+          s.ai.sectionTokens = {};
+          s.ai.streamingSection = null;
+        }
+      }),
+
+    setStreamingSection: (section) =>
+      set((s) => {
+        s.ai.streamingSection = section;
+        if (section && !s.ai.sectionTokens[section]) {
+          s.ai.sectionTokens[section] = "";
+        }
+      }),
+
+    appendSectionToken: (section, token) =>
+      set((s) => {
+        s.ai.sectionTokens[section] = (s.ai.sectionTokens[section] ?? "") + token;
+      }),
+
+    commitSection: (section, content) =>
+      set((s) => {
+        // Write the final content into resume immediately
+        if (s.resume) {
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          (s.resume.content as any)[section] = content;
+        }
+        s.ai.streamingSection = null;
+        delete s.ai.sectionTokens[section];
       }),
 
     setPendingAIResult: (result) =>
