@@ -53,8 +53,8 @@ async def _stream_section(ws: WebSocket, section: str, content: str, delay: floa
 async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section: Optional[str]):
     await ws.send_json({"type": "ai_stream_start", "payload": {}})
 
-    async def on_activity(node: str, message: str):
-        await ws.send_json({"type": "ai_activity", "payload": {"node": node, "message": message}})
+    async def on_activity(node: str, message: str, model: str = ""):
+        await ws.send_json({"type": "ai_activity", "payload": {"node": node, "message": message, "model": model}})
 
     # Run full pipeline (extraction + analysis + optimization + validation)
     state = await run_pipeline(

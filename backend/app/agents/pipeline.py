@@ -15,7 +15,7 @@ from app.services.llm import llm_invoke
 import json
 import re
 
-ActivityCallback = Optional[Callable[[str, str], Awaitable[None]]]
+ActivityCallback = Optional[Callable[[str, str, str], Awaitable[None]]]
 
 
 class AgentState(TypedDict):
@@ -59,7 +59,7 @@ def _parse_json_block(text: str) -> dict:
 async def _emit(state: AgentState, node: str, message: str):
     cb = state.get("on_activity")
     if cb:
-        await cb(node, message)
+        await cb(node, message, state.get("active_model", ""))
 
 
 async def extraction_node(state: AgentState) -> AgentState:

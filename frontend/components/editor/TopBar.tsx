@@ -1,10 +1,12 @@
 "use client";
 
+import { useState, useRef } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
 import { useAuthStore } from "@/store/authStore";
 
 interface TopBarProps {
   resumeTitle?: string;
+  onTitleChange?: (title: string) => void;
   onPalette: () => void;
   onRunAI: () => void;
   onStopAI?: () => void;
@@ -15,8 +17,11 @@ interface TopBarProps {
   isDirty: boolean;
 }
 
-export function TopBar({ resumeTitle, onPalette, onRunAI, onStopAI, onHistory, onExport, onBack, aiState, isDirty }: TopBarProps) {
+export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopAI, onHistory, onExport, onBack, aiState, isDirty }: TopBarProps) {
   const { user, clearAuth } = useAuthStore();
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [titleDraft, setTitleDraft] = useState("");
+  const titleInputRef = useRef<HTMLInputElement>(null);
   return (
     <header style={{
       display: "flex", alignItems: "center", justifyContent: "space-between",
@@ -34,9 +39,35 @@ export function TopBar({ resumeTitle, onPalette, onRunAI, onStopAI, onHistory, o
         <div className="mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12 }}>
           <span style={{ color: "var(--fg-2)" }}>~/resumes</span>
           <span style={{ color: "var(--fg-4)" }}>/</span>
-          <span style={{ color: resumeTitle ? "var(--fg-1)" : "var(--fg-3)" }}>
-            {resumeTitle ?? "untitled.resume"}
-          </span>
+          {editingTitle ? (
+            <input
+              ref={titleInputRef}
+              value={titleDraft}
+              onChange={e => setTitleDraft(e.target.value)}
+              onBlur={() => {
+                setEditingTitle(false);
+                if (titleDraft.trim()) onTitleChange?.(titleDraft.trim());
+              }}
+              onKeyDown={e => {
+                if (e.key === "Enter") { (e.target as HTMLInputElement).blur(); }
+                if (e.key === "Escape") { setEditingTitle(false); }
+              }}
+              style={{
+                background: "var(--bg-0)", border: "1px solid var(--accent)",
+                borderRadius: 4, color: "var(--fg-0)", fontSize: 12,
+                fontFamily: "var(--mono)", padding: "1px 6px", width: 160, outline: "none",
+              }}
+              autoFocus
+            />
+          ) : (
+            <span
+              title="Click to rename"
+              onClick={() => { setTitleDraft(resumeTitle ?? ""); setEditingTitle(true); }}
+              style={{ color: resumeTitle ? "var(--fg-1)" : "var(--fg-3)", cursor: "text" }}
+            >
+              {resumeTitle ?? "untitled.resume"}
+            </span>
+          )}
         </div>
         <div className="mono" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 11, color: "var(--fg-3)" }}>
           {isDirty ? (

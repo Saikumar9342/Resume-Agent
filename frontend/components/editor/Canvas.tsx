@@ -22,21 +22,20 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
   const scrollRef = useRef<HTMLDivElement>(null);
   const { ai } = useResumeStore();
 
-  useEffect(() => {
-    const el = scrollRef.current?.querySelector(`[data-sec="${activeSection}"]`);
-    if (el && scrollRef.current) {
-      scrollRef.current.scrollTo({ top: (el as HTMLElement).offsetTop - 24, behavior: "smooth" });
-    }
-  }, [activeSection]);
+  const scrollToSection = (sec: string) => {
+    const container = scrollRef.current;
+    if (!container) return;
+    const el = container.querySelector(`[data-sec="${sec}"]`) as HTMLElement | null;
+    if (!el) return;
+    const containerTop = container.getBoundingClientRect().top;
+    const elTop = el.getBoundingClientRect().top;
+    container.scrollBy({ top: elTop - containerTop - 24, behavior: "smooth" });
+  };
 
-  // Auto-scroll to streaming section
+  useEffect(() => { scrollToSection(activeSection); }, [activeSection]);
+
   useEffect(() => {
-    if (ai.streamingSection) {
-      const el = scrollRef.current?.querySelector(`[data-sec="${ai.streamingSection}"]`);
-      if (el && scrollRef.current) {
-        scrollRef.current.scrollTo({ top: (el as HTMLElement).offsetTop - 24, behavior: "smooth" });
-      }
-    }
+    if (ai.streamingSection) scrollToSection(ai.streamingSection);
   }, [ai.streamingSection]);
 
   const hasContent = resume && (resume.contact?.name || resume.summary || resume.experience?.length);
@@ -211,9 +210,9 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* Summary */}
       {(resume.summary || sectionTokens["summary"]) && (
-        <div style={sectionStyle("summary", streamingSection, isStreaming)}>
+        <div data-sec="summary" style={sectionStyle("summary", streamingSection, isStreaming)}>
           <SectionHeader label="Summary" />
-          <p data-sec="summary" style={{
+          <p style={{
             margin: "8px 0 28px", padding: heatmap ? "8px 12px" : "0",
             borderRadius: 6, color: "var(--fg-1)", lineHeight: 1.6, fontSize: 14,
           }}>
@@ -226,9 +225,9 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* Experience */}
       {((resume.experience && resume.experience.length > 0) || streamingSection === "experience") && (
-        <div style={sectionStyle("experience", streamingSection, isStreaming)}>
+        <div data-sec="experience" style={sectionStyle("experience", streamingSection, isStreaming)}>
           <SectionHeader label="Experience" count={resume.experience ? `${resume.experience.length} roles` : undefined} />
-          <div data-sec="experience" style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 28 }}>
             {resume.experience?.map((exp, i) => (
               <div key={i} style={{ marginTop: 18 }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
@@ -281,9 +280,9 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* Education */}
       {resume.education && resume.education.length > 0 && (
-        <div style={sectionStyle("education", streamingSection, isStreaming)}>
+        <div data-sec="education" style={sectionStyle("education", streamingSection, isStreaming)}>
           <SectionHeader label="Education" />
-          <div data-sec="education" style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 28 }}>
             {resume.education.map((edu, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--fg-1)", padding: "4px 0" }}>
                 <span>
@@ -299,9 +298,9 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* Skills */}
       {(resume.skills || streamingSection === "skills") && (
-        <div style={sectionStyle("skills", streamingSection, isStreaming)}>
+        <div data-sec="skills" style={sectionStyle("skills", streamingSection, isStreaming)}>
           <SectionHeader label="Skills" />
-          <div data-sec="skills" style={{ marginBottom: 28 }}>
+          <div style={{ marginBottom: 28 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
               {resume.skills?.technical?.map((s) => (
                 <span key={s} className="mono" style={{
@@ -329,9 +328,9 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* Projects */}
       {((resume.projects && resume.projects.length > 0) || streamingSection === "projects") && (
-        <div style={sectionStyle("projects", streamingSection, isStreaming)}>
+        <div data-sec="projects" style={sectionStyle("projects", streamingSection, isStreaming)}>
           <SectionHeader label="Projects" />
-          <div data-sec="projects">
+          <div>
             {resume.projects?.map((p, i) => (
               <div key={i} style={{ fontSize: 13, lineHeight: 1.5, color: "var(--fg-1)", marginBottom: 6 }}>
                 <strong className="mono" style={{ color: "var(--fg-0)" }}>{p.name}</strong> — {p.description}

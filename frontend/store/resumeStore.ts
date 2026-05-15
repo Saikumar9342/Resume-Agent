@@ -4,12 +4,13 @@ import type { Resume, ResumeContent, DiffPatch, ATSAnalysis, AIRewriteResult, AI
 
 interface AIState {
   isStreaming: boolean;
-  streamingSection: string | null;   // which section is currently animating
-  sectionTokens: Record<string, string>; // accumulated tokens per section while streaming
+  streamingSection: string | null;
+  sectionTokens: Record<string, string>;
   pendingResult: AIRewriteResult | null;
   ghostText: string;
   reasoning: string;
   activities: AIActivity[];
+  activeModel: string | null;
 }
 
 interface EditorState {
@@ -25,7 +26,9 @@ interface ResumeStore {
 
   setResume: (r: Resume) => void;
   updateContent: (content: ResumeContent) => void;
+  setResumeTitle: (title: string) => void;
   setAIStreaming: (v: boolean) => void;
+  setActiveModel: (model: string) => void;
   setStreamingSection: (section: string | null) => void;
   appendSectionToken: (section: string, token: string) => void;
   commitSection: (section: string, content: unknown) => void;
@@ -53,6 +56,7 @@ export const useResumeStore = create<ResumeStore>()(
       ghostText: "",
       reasoning: "",
       activities: [],
+      activeModel: null,
     },
     editor: { activeSection: null, isDirty: false },
     ats: null,
@@ -69,6 +73,19 @@ export const useResumeStore = create<ResumeStore>()(
           s.resume.content = content;
           s.editor.isDirty = true;
         }
+      }),
+
+    setResumeTitle: (title) =>
+      set((s) => {
+        if (s.resume) {
+          s.resume.title = title;
+          s.editor.isDirty = true;
+        }
+      }),
+
+    setActiveModel: (model) =>
+      set((s) => {
+        s.ai.activeModel = model;
       }),
 
     setAIStreaming: (v) =>

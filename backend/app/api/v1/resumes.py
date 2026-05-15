@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi.responses import HTMLResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
@@ -132,4 +133,106 @@ async def rewrite_resume(
         suggested=suggested,
         diff_patches=patches,
         reasoning=state.get("reasoning", ""),
+    )
+
+
+@router.get("/resumes/{resume_id}/export")
+async def export_resume(
+    resume_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    c = resume.content or {}
+    contact = c.get("contact", {})
+    name = contact.get("name", resume.title or "Resume")
+
+    def esc(s: str) -> str:
+        return str(s).replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
+
+    def section(title: str, body: str) -> str:
+        return f'<section><h2>{esc(title)}</h2>{body}</section>'
+
+    # Contact header
+    contact_parts = [contact.get("email"), contact.get("phone"), contact.get("location"),
+                     contact.get("linkedin"), contact.get("github")]
+    contact_html = " &nbsp;·&nbsp; ".join(esc(p) for p in contact_parts if p)
+
+    # Summary
+    summary_html = f"<p>{esc(c.get('summary', ''))}</p>" if c.get("summary") else ""
+
+    # Experience
+    exp_items = []
+    for e in c.get("experience", []):
+        bullets = "".join(f"<li>{esc(b)}</li>" for b in e.get("bullets", []))
+        exp_items.append(
+            f'<div class="entry"><div class="entry-header"><strong>{esc(e.get("company",""))}</strong>'
+            f'<span class="date">{esc(e.get("start",""))} – {esc(e.get("end",""))}</span></div>'
+            f'<div class="role">{esc(e.get("title",""))}</div><ul>{bullets}</ul></div>'
+        )
+
+    # Education
+    edu_items = []
+    for e in c.get("education", []):
+        edu_items.append(
+            f'<div class="entry"><div class="entry-header"><strong>{esc(e.get("institution",""))}</strong>'
+            f'<span class="date">{esc(e.get("year",""))}</span></div>'
+            f'<div class="role">{esc(e.get("degree",""))} in {esc(e.get("field",""))}</div></div>'
+        )
+
+    # Skills
+    tech = c.get("skills", {}).get("technical", [])
+    skills_html = f'<p>{", ".join(esc(s) for s in tech)}</p>' if tech else ""
+
+    # Projects
+    proj_items = []
+    for p in c.get("projects", []):
+        techs = ", ".join(p.get("technologies", []))
+        proj_items.append(
+            f'<div class="entry"><strong>{esc(p.get("name",""))}</strong>'
+            f'{(" &nbsp;·&nbsp; <em>" + esc(techs) + "</em>") if techs else ""}'
+            f'<p>{esc(p.get("description",""))}</p></div>'
+        )
+
+    html = f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>{esc(name)}</title>
+<style>
+  body {{ font-family: Georgia, serif; max-width: 820px; margin: 40px auto; padding: 0 24px; color: #111; line-height: 1.55; font-size: 14px; }}
+  h1 {{ font-size: 26px; margin: 0 0 4px; letter-spacing: -0.5px; }}
+  .contact {{ color: #555; font-size: 12.5px; margin-bottom: 28px; }}
+  h2 {{ font-size: 11px; text-transform: uppercase; letter-spacing: 0.1em; color: #888; border-bottom: 1px solid #ddd; padding-bottom: 4px; margin: 28px 0 14px; }}
+  .entry {{ margin-bottom: 14px; }}
+  .entry-header {{ display: flex; justify-content: space-between; }}
+  .date {{ color: #666; font-size: 12.5px; }}
+  .role {{ color: #444; font-size: 13px; margin: 2px 0 6px; font-style: italic; }}
+  ul {{ margin: 4px 0; padding-left: 18px; }}
+  li {{ margin-bottom: 3px; }}
+  @media print {{ body {{ margin: 0; }} }}
+</style>
+</head>
+<body>
+<h1>{esc(name)}</h1>
+<div class="contact">{contact_html}</div>
+{section("Summary", summary_html) if summary_html else ""}
+{section("Experience", "".join(exp_items)) if exp_items else ""}
+{section("Education", "".join(edu_items)) if edu_items else ""}
+{section("Skills", skills_html) if skills_html else ""}
+{section("Projects", "".join(proj_items)) if proj_items else ""}
+</body>
+</html>"""
+
+    filename = name.replace(" ", "_").lower()
+    return HTMLResponse(
+        content=html,
+        headers={"Content-Disposition": f'attachment; filename="{filename}.html"'},
     )

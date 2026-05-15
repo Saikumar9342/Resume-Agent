@@ -12,7 +12,7 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
   onErrorRef.current = onError;
   const {
     setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText,
-    addActivity, setStreamingSection, appendSectionToken, commitSection,
+    addActivity, setStreamingSection, appendSectionToken, commitSection, setActiveModel,
   } = useResumeStore();
   const { clearAuth } = useAuthStore();
 
@@ -57,8 +57,9 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
         break;
 
       case "ai_activity": {
-        const { node, message } = msg.payload as { node: AIActivity["node"]; message: string };
+        const { node, message, model } = msg.payload as { node: AIActivity["node"]; message: string; model?: string };
         addActivity({ node, message });
+        if (model) setActiveModel(model);
         break;
       }
 

@@ -25,7 +25,7 @@ type SectionId = "contact" | "summary" | "experience" | "education" | "skills" |
 type RailTab = "ai" | "ats" | "versions";
 
 export function ResumeApp() {
-  const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS } = useResumeStore();
+  const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS, setResumeTitle } = useResumeStore();
   const { isAuthenticated } = useAuthStore();
   const [showAuth, setShowAuth] = useState(false);
 
@@ -128,8 +128,29 @@ export function ResumeApp() {
 
   const handleExport = async () => {
     if (!resumeId) return;
-    const url = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`;
-    window.open(url, "_blank");
+    try {
+      const { token } = useAuthStore.getState();
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      if (!res.ok) throw new Error(`${res.status}`);
+      const blob = await res.blob();
+      const ct = res.headers.get("content-type") ?? "";
+      const ext = ct.includes("pdf") ? "pdf" : ct.includes("html") ? "html" : "txt";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = `${resume?.title ?? "resume"}.${ext}`; a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("Export failed", e);
+    }
+  };
+
+  const handleTitleChange = async (title: string) => {
+    if (!resumeId || !title.trim()) return;
+    setResumeTitle(title.trim());
+    try { await api.updateResume(resumeId, { title: title.trim() }); } catch { /* silent */ }
   };
 
   const handleRestoreVersion = async (versionId: string) => {
@@ -174,7 +195,18 @@ export function ResumeApp() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeId, rawText, jd]);
 
-  const wordCount = rawText ? rawText.split(/\s+/).filter(Boolean).length : 0;
+  const wordCount = (() => {
+    if (resume?.content) {
+      const c = resume.content;
+      const text = [
+        c.summary,
+        ...(c.experience?.flatMap(e => e.bullets) ?? []),
+        ...(c.projects?.map(p => p.description) ?? []),
+      ].join(" ");
+      return text.split(/\s+/).filter(Boolean).length;
+    }
+    return rawText ? rawText.split(/\s+/).filter(Boolean).length : 0;
+  })();
 
   if (screen === "landing") {
     return (
@@ -209,6 +241,7 @@ export function ResumeApp() {
     }}>
       <TopBar
         resumeTitle={resume?.title}
+        onTitleChange={handleTitleChange}
         onPalette={() => setPaletteOpen(true)}
         onRunAI={handleAIRewrite}
         onStopAI={() => { cancelAI(); setAIState("idle"); }}
@@ -306,6 +339,7 @@ export function ResumeApp() {
           activities={ai.activities}
           pendingResult={ai.pendingResult}
           reasoning={ai.reasoning}
+          activeModel={ai.activeModel}
           onAcceptAll={handleAcceptAll}
           onRejectAll={handleRejectAll}
           onAcceptPatch={handleAcceptPatch}
@@ -323,6 +357,7 @@ export function ResumeApp() {
         wordCount={wordCount}
         heatmap={heatmap}
         version={resume?.version ? `v${resume.version}` : undefined}
+        errorCount={ats ? ats.checkpoints.filter(c => !c.passed).length : 0}
       />
 
       {paletteOpen && (

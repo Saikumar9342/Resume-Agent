@@ -9,9 +9,10 @@ interface StatusBarProps {
   wordCount: number;
   heatmap: boolean;
   version?: string;
+  errorCount?: number;
 }
 
-export function StatusBar({ ats, aiState, wordCount, heatmap, version }: StatusBarProps) {
+export function StatusBar({ ats, aiState, wordCount, heatmap, version, errorCount = 0 }: StatusBarProps) {
   const score = ats?.score ?? null;
   return (
     <footer className="mono" style={{
@@ -25,11 +26,10 @@ export function StatusBar({ ats, aiState, wordCount, heatmap, version }: StatusB
       flexShrink: 0,
     }}>
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 5, color: "var(--accent)" }}>
-          <Icon name="branch" size={11} /> main
+        <span>
+          <span style={{ color: errorCount > 0 ? "var(--red)" : "var(--green)" }}>●</span>
+          {" "}{errorCount} error{errorCount !== 1 ? "s" : ""}
         </span>
-        <span style={{ color: "var(--fg-3)" }}>·</span>
-        <span><span style={{ color: "var(--green)" }}>●</span> 0 errors</span>
         <span style={{ color: "var(--fg-3)" }}>·</span>
         <span>heatmap {heatmap ? <span style={{ color: "var(--accent)" }}>on</span> : "off"}</span>
         {score !== null && (
@@ -37,10 +37,8 @@ export function StatusBar({ ats, aiState, wordCount, heatmap, version }: StatusB
         )}
       </div>
       <div style={{ display: "flex", gap: 14, alignItems: "center" }}>
-        {wordCount > 0 && <span>{wordCount} words</span>}
-        <span style={{ color: "var(--fg-3)" }}>·</span>
-        {version && <span>{version}</span>}
-        <span style={{ color: "var(--fg-3)" }}>·</span>
+        {wordCount > 0 && <><span>{wordCount} words</span><span style={{ color: "var(--fg-3)" }}>·</span></>}
+        {version && <><span>{version}</span><span style={{ color: "var(--fg-3)" }}>·</span></>}
         <span style={{ display: "flex", alignItems: "center", gap: 5, color: aiState === "streaming" ? "var(--accent)" : "var(--fg-2)" }}>
           <Icon name="bolt" size={11} />
           agent · {aiState === "streaming" ? "running" : aiState === "review" ? "review" : aiState === "accepted" ? "applied" : "idle"}

@@ -14,6 +14,7 @@ interface RightRailProps {
   activities: AIActivity[];
   pendingResult: AIRewriteResult | null;
   reasoning: string;
+  activeModel: string | null;
   onAcceptAll: () => void;
   onRejectAll: () => void;
   onAcceptPatch: (patch: DiffPatch) => void;
@@ -34,7 +35,7 @@ export interface VersionEntry {
 }
 
 export function RightRail({
-  tab, setTab, aiState, aiError, activities, pendingResult, reasoning,
+  tab, setTab, aiState, aiError, activities, pendingResult, reasoning, activeModel,
   onAcceptAll, onRejectAll, onAcceptPatch,
   ats, heatmap, setHeatmap,
   versions, onRestoreVersion,
@@ -75,6 +76,7 @@ export function RightRail({
             activities={activities}
             pendingResult={pendingResult}
             reasoning={reasoning}
+            activeModel={activeModel}
             onAcceptAll={onAcceptAll}
             onRejectAll={onRejectAll}
             onAcceptPatch={onAcceptPatch}
@@ -127,12 +129,13 @@ function RailTabBtn({ id, current, setTab, icon, label, badge }: {
 }
 
 /* ── AI Terminal ── */
-function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, onAcceptAll, onRejectAll, onAcceptPatch }: {
+function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, activeModel, onAcceptAll, onRejectAll, onAcceptPatch }: {
   aiState: "idle" | "streaming" | "review" | "accepted";
   aiError: string | null;
   activities: AIActivity[];
   pendingResult: AIRewriteResult | null;
   reasoning: string;
+  activeModel: string | null;
   onAcceptAll: () => void;
   onRejectAll: () => void;
   onAcceptPatch: (patch: DiffPatch) => void;
@@ -166,7 +169,7 @@ function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, on
           <span>agent · {aiState === "streaming" ? "running" : aiState === "review" ? "awaiting review" : aiState === "accepted" ? "applied" : "idle"}</span>
         </div>
         <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-4)" }}>
-          gemini-2.0-flash · 4 nodes
+          {activeModel ? `${activeModel} · 4 nodes` : aiState === "idle" ? "—" : "loading…"}
         </div>
       </div>
 
