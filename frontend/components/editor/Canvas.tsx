@@ -45,9 +45,10 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
     <main style={{
       background: "var(--bg-0)",
       display: "flex", flexDirection: "column",
-      minHeight: 0,
+      minHeight: 0, height: "100%",
       borderRight: "1px solid var(--line)",
       position: "relative",
+      overflow: "hidden",
     }}>
       {/* tab strip */}
       <div style={{
@@ -75,7 +76,8 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
       <div ref={scrollRef} style={{
         flex: 1, overflow: "auto",
         display: "flex", justifyContent: "center",
-        padding: "32px 36px 60px",
+        alignItems: "flex-start",
+        padding: "32px 36px 80px",
       }}>
         {hasContent ? (
           <ResumeArticle
@@ -163,10 +165,11 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
       background: "var(--bg-1)",
       border: "1px solid var(--line)",
       borderRadius: 12,
-      padding: "48px 56px 56px",
+      padding: "48px 56px 64px",
       color: "var(--fg-0)",
       position: "relative",
       boxShadow: "0 40px 60px -30px black",
+      alignSelf: "flex-start",
     }}>
       {/* Contact — always visible, no blur */}
       <header data-sec="contact" style={{ marginBottom: 26 }}>
@@ -315,8 +318,9 @@ function RawTextFallback({ rawText, aiState }: { rawText: string; aiState: strin
     <div style={{
       width: 760, maxWidth: "100%",
       background: "var(--bg-1)", border: "1px solid var(--line)",
-      borderRadius: 12, padding: "48px 56px 56px",
+      borderRadius: 12, padding: "48px 56px 64px",
       position: "relative", boxShadow: "0 40px 60px -30px black",
+      alignSelf: "flex-start",
     }}>
       {aiState === "streaming" && (
         <div style={{ position: "absolute", inset: 0, borderRadius: 12, overflow: "hidden", pointerEvents: "none" }}>
