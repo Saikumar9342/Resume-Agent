@@ -47,8 +47,6 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
       display: "flex", flexDirection: "column",
       minHeight: 0, height: "100%",
       borderRight: "1px solid var(--line)",
-      position: "relative",
-      overflow: "hidden",
     }}>
       {/* tab strip */}
       <div style={{
@@ -75,9 +73,9 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
 
       <div ref={scrollRef} style={{
         flex: 1, overflow: "auto",
-        display: "flex", justifyContent: "center",
-        alignItems: "flex-start",
-        padding: "32px 36px 80px",
+        display: "flex", flexDirection: "column",
+        alignItems: "center",
+        padding: "32px 36px 0",
       }}>
         {hasContent ? (
           <ResumeArticle
@@ -91,9 +89,23 @@ export function Canvas({ resume, rawText, activeSection, heatmap, onToggleHeatma
         ) : (
           <RawTextFallback rawText={rawText} aiState={aiState} />
         )}
+        {/* Spacer so content doesn't hide behind legend */}
+        <div style={{ height: heatmap && ats ? 80 : 48, flexShrink: 0 }} />
       </div>
 
-      {heatmap && ats && <HeatLegend ats={ats} />}
+      {/* HeatLegend — sticky at bottom of canvas, outside scroll so it never overlaps */}
+      {heatmap && ats && (
+        <div style={{
+          position: "absolute", bottom: 0, left: 0, right: 0,
+          display: "flex", justifyContent: "center",
+          padding: "12px 0 14px",
+          background: "linear-gradient(to top, var(--bg-0) 60%, transparent)",
+          pointerEvents: "none",
+          zIndex: 10,
+        }}>
+          <HeatLegend ats={ats} />
+        </div>
+      )}
     </main>
   );
 }
@@ -114,6 +126,18 @@ function CanvasTab({ active, label }: { active?: boolean; label: string }) {
       {active && <span style={{ position: "absolute", left: 0, right: 0, top: -1, height: 2, background: "var(--accent)" }} />}
     </div>
   );
+}
+
+function bulletHeat(bullet: string, missingKw: string[]): "red" | "amber" | "green" | null {
+  if (!missingKw.length) return null;
+  const lower = bullet.toLowerCase();
+  const words: string[] = lower.match(/\w{4,}/g) ?? [];
+  const hasNumbers = /\d/.test(bullet);
+  const hasAction = /^(spearhead|led|built|designed|developed|implemented|managed|created|improved|increased|reduced|delivered|launched|architected|engineered|optimized|drove|mentored)/i.test(bullet.trim());
+  const matchedKw = missingKw.filter(k => words.includes(k.toLowerCase())).length;
+  if (hasNumbers && hasAction) return "green";
+  if (matchedKw > 0 || hasAction) return "amber";
+  return "red";
 }
 
 function SectionHeader({ label, count }: { label: string; count?: string }) {
@@ -158,6 +182,7 @@ function StreamingText({ text }: { text: string }) {
 
 function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionTokens, ats }: ArticleProps) {
   const isStreaming = aiState === "streaming";
+  const missingKw = ats?.missing_keywords ?? [];
 
   return (
     <article style={{
@@ -216,18 +241,30 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
                   </div>
                 </div>
                 <ul style={{ margin: "8px 0 0", padding: 0, listStyle: "none" }}>
-                  {exp.bullets.map((b, j) => (
+                  {exp.bullets.map((b, j) => {
+                    const heat = heatmap ? bulletHeat(b, missingKw) : null;
+                    return (
                     <li key={j} style={{
                       fontSize: 13, lineHeight: 1.55, color: "var(--fg-1)",
-                      padding: heatmap ? "6px 12px 6px 14px" : "3px 0 3px 16px",
+                      padding: heatmap ? "6px 12px 6px 20px" : "3px 0 3px 16px",
                       position: "relative", borderRadius: 4, marginBottom: 2,
+                      background: heat === "green"
+                        ? "color-mix(in oklch, var(--green) 8%, transparent)"
+                        : heat === "amber"
+                        ? "color-mix(in oklch, var(--amber) 8%, transparent)"
+                        : heat === "red"
+                        ? "color-mix(in oklch, var(--red) 8%, transparent)"
+                        : "transparent",
+                      borderLeft: heat ? `2px solid var(--${heat})` : heatmap ? "2px solid transparent" : "none",
+                      transition: "background 0.3s ease, border-color 0.3s ease",
                     }}>
-                      <span className="mono" style={{ position: "absolute", left: heatmap ? 4 : 0, top: heatmap ? 8 : 5, color: "var(--fg-3)", fontSize: 10 }}>›</span>
+                      <span className="mono" style={{ position: "absolute", left: heatmap ? 6 : 0, top: heatmap ? 8 : 5, color: heat ? `var(--${heat})` : "var(--fg-3)", fontSize: 10 }}>›</span>
                       {streamingSection === "experience" && i === (resume.experience?.length ?? 1) - 1 && j === (exp.bullets.length - 1)
                         ? <StreamingText text={b} />
                         : b}
                     </li>
-                  ))}
+                    );
+                  })}
                   {/* Show live tokens for experience as an extra bullet */}
                   {streamingSection === "experience" && sectionTokens["experience"] && i === (resume.experience?.length ?? 1) - 1 && (
                     <li style={{ fontSize: 13, lineHeight: 1.55, color: "var(--fg-1)", padding: "3px 0 3px 16px", position: "relative" }}>
