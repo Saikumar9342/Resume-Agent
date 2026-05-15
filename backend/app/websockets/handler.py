@@ -4,8 +4,10 @@ Supports:
   - patch: apply content patch from client, broadcast to other sessions
   - request_ai: trigger streaming AI suggestion with live activity messages
   - request_ghost: get inline ghost-text completion
+  - cancel_ai: cancel a running AI pipeline
 """
 
+import asyncio
 from fastapi import WebSocket, WebSocketDisconnect
 from typing import Dict, Optional
 from app.services.auth import decode_token
@@ -19,7 +21,6 @@ _connections: Dict[str, set] = {}
 
 
 async def ws_connect(resume_id: str, ws: WebSocket, token: Optional[str] = None):
-    # Validate JWT if provided (close with 4001 if invalid)
     if token:
         payload = decode_token(token)
         if not payload:
@@ -54,6 +55,36 @@ async def _handle(resume_id: str, ws: WebSocket):
         temperature=0.4,
     )
 
+    ai_task: Optional[asyncio.Task] = None
+
+    async def _run_ai(raw_text: str, job_desc: Optional[str], section: Optional[str]):
+        await ws.send_json({"type": "ai_stream_start", "payload": {}})
+
+        async def on_activity(node: str, message: str):
+            await ws.send_json({
+                "type": "ai_activity",
+                "payload": {"node": node, "message": message},
+            })
+
+        state = await run_pipeline(
+            raw_text=raw_text,
+            job_description=job_desc,
+            section=section,
+            on_activity=on_activity,
+        )
+
+        suggested = state.get("validated") or state.get("optimized") or {}
+        patches = generate_diff_patches(state.get("structured", {}), suggested)
+
+        await ws.send_json({
+            "type": "ai_suggestion",
+            "payload": {
+                "suggested": suggested,
+                "diff_patches": patches,
+                "reasoning": state.get("reasoning", ""),
+            },
+        })
+
     async for data in ws.iter_json():
         msg_type = data.get("type")
         payload = data.get("payload", {})
@@ -62,37 +93,27 @@ async def _handle(resume_id: str, ws: WebSocket):
             await _broadcast(resume_id, {"type": "patch", "payload": payload}, exclude=ws)
 
         elif msg_type == "request_ai":
+            # Cancel any already-running pipeline
+            if ai_task and not ai_task.done():
+                ai_task.cancel()
+
             raw_text = payload.get("raw_text", "")
             job_desc = payload.get("job_description")
             section = payload.get("section")
 
-            await ws.send_json({"type": "ai_stream_start", "payload": {}})
+            ai_task = asyncio.create_task(_run_ai(raw_text, job_desc, section))
 
-            # Activity callback — streams live status messages to the client
-            async def on_activity(node: str, message: str):
-                await ws.send_json({
-                    "type": "ai_activity",
-                    "payload": {"node": node, "message": message},
-                })
+            try:
+                await ai_task
+            except asyncio.CancelledError:
+                await ws.send_json({"type": "ai_cancelled", "payload": {}})
+            except Exception as e:
+                await ws.send_json({"type": "ai_error", "payload": {"message": str(e)}})
 
-            state = await run_pipeline(
-                raw_text=raw_text,
-                job_description=job_desc,
-                section=section,
-                on_activity=on_activity,
-            )
-
-            suggested = state.get("validated") or state.get("optimized") or {}
-            patches = generate_diff_patches(state.get("structured", {}), suggested)
-
-            await ws.send_json({
-                "type": "ai_suggestion",
-                "payload": {
-                    "suggested": suggested,
-                    "diff_patches": patches,
-                    "reasoning": state.get("reasoning", ""),
-                },
-            })
+        elif msg_type == "cancel_ai":
+            if ai_task and not ai_task.done():
+                ai_task.cancel()
+            await ws.send_json({"type": "ai_cancelled", "payload": {}})
 
         elif msg_type == "request_ghost":
             context = payload.get("context", "")

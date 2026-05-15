@@ -7,6 +7,7 @@ interface TopBarProps {
   resumeTitle?: string;
   onPalette: () => void;
   onRunAI: () => void;
+  onStopAI?: () => void;
   onHistory: () => void;
   onExport: () => void;
   onBack: () => void;
@@ -14,7 +15,7 @@ interface TopBarProps {
   isDirty: boolean;
 }
 
-export function TopBar({ resumeTitle, onPalette, onRunAI, onHistory, onExport, onBack, aiState, isDirty }: TopBarProps) {
+export function TopBar({ resumeTitle, onPalette, onRunAI, onStopAI, onHistory, onExport, onBack, aiState, isDirty }: TopBarProps) {
   const { user, clearAuth } = useAuthStore();
   return (
     <header style={{
@@ -96,11 +97,20 @@ export function TopBar({ resumeTitle, onPalette, onRunAI, onHistory, onExport, o
         <button onClick={onHistory} className="btn mono" style={{ background: "var(--bg-2)" }}>
           <Icon name="clock" size={11} /> history
         </button>
+        {aiState === "streaming" ? (
+          <button
+            onClick={onStopAI}
+            className="btn mono"
+            style={{ background: "var(--bg-2)", color: "var(--fg-2)", border: "1px solid var(--line)" }}
+          >
+            <Icon name="x" size={11} /> stop
+          </button>
+        ) : null}
         <button
           onClick={onRunAI}
           disabled={aiState === "streaming"}
           className="btn btn-accent mono"
-          style={{ opacity: aiState === "streaming" ? 0.7 : 1 }}
+          style={{ opacity: aiState === "streaming" ? 0.5 : 1 }}
         >
           <Icon name="sparkle" size={11} />
           {aiState === "streaming" ? "rewriting…" : "rewrite"}

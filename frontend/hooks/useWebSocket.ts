@@ -67,6 +67,15 @@ export function useResumeWebSocket(resumeId: string | null) {
         appendGhostToken((msg.payload as { token: string }).token);
         break;
 
+      case "ai_cancelled":
+        setAIStreaming(false);
+        clearGhostText();
+        break;
+
+      case "ai_error":
+        setAIStreaming(false);
+        break;
+
       case "ghost_done":
       case "patch":
       case "pong":
@@ -99,5 +108,9 @@ export function useResumeWebSocket(resumeId: string | null) {
     );
   }, []);
 
-  return { sendPatch, requestAI, requestGhost };
+  const cancelAI = useCallback(() => {
+    wsRef.current?.send(JSON.stringify({ type: "cancel_ai", payload: {} }));
+  }, []);
+
+  return { sendPatch, requestAI, requestGhost, cancelAI };
 }

@@ -41,7 +41,7 @@ export function ResumeApp() {
   const [aiState, setAIState] = useState<"idle" | "streaming" | "review" | "accepted">("idle");
   const [versions, setVersions] = useState<VersionEntry[]>([]);
 
-  const { requestAI } = useResumeWebSocket(resumeId);
+  const { requestAI, cancelAI } = useResumeWebSocket(resumeId);
   const { saveBeforeAI } = useAutosave(resumeId);
 
   // Sync aiState from store
@@ -205,6 +205,7 @@ export function ResumeApp() {
         resumeTitle={resume?.title}
         onPalette={() => setPaletteOpen(true)}
         onRunAI={handleAIRewrite}
+        onStopAI={() => { cancelAI(); setAIState("idle"); }}
         onHistory={() => setRailTab("versions")}
         onExport={handleExport}
         onBack={() => setScreen("landing")}
