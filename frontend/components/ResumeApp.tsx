@@ -39,9 +39,14 @@ export function ResumeApp() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [aiState, setAIState] = useState<"idle" | "streaming" | "review" | "accepted">("idle");
+  const [aiError, setAIError] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionEntry[]>([]);
 
-  const { requestAI, cancelAI } = useResumeWebSocket(resumeId);
+  const { requestAI, cancelAI } = useResumeWebSocket(resumeId, (msg) => {
+    setAIError(msg);
+    setAIState("idle");
+    setRailTab("ai");
+  });
   const { saveBeforeAI } = useAutosave(resumeId);
 
   // Sync aiState from store
@@ -104,6 +109,7 @@ export function ResumeApp() {
   const handleAIRewrite = async () => {
     if (!resumeId && !rawText) return;
     if (!resumeId) { await handleCreate(); return; }
+    setAIError(null);
     await saveBeforeAI();
     requestAI(rawText, jd || undefined);
     setRailTab("ai");
@@ -296,6 +302,7 @@ export function ResumeApp() {
           tab={railTab}
           setTab={setRailTab}
           aiState={aiState}
+          aiError={aiError}
           activities={ai.activities}
           pendingResult={ai.pendingResult}
           reasoning={ai.reasoning}

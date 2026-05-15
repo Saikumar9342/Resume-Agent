@@ -10,6 +10,7 @@ interface RightRailProps {
   tab: RailTab;
   setTab: (t: RailTab) => void;
   aiState: "idle" | "streaming" | "review" | "accepted";
+  aiError: string | null;
   activities: AIActivity[];
   pendingResult: AIRewriteResult | null;
   reasoning: string;
@@ -33,7 +34,7 @@ export interface VersionEntry {
 }
 
 export function RightRail({
-  tab, setTab, aiState, activities, pendingResult, reasoning,
+  tab, setTab, aiState, aiError, activities, pendingResult, reasoning,
   onAcceptAll, onRejectAll, onAcceptPatch,
   ats, heatmap, setHeatmap,
   versions, onRestoreVersion,
@@ -70,6 +71,7 @@ export function RightRail({
         {tab === "ai" && (
           <AITerminal
             aiState={aiState}
+            aiError={aiError}
             activities={activities}
             pendingResult={pendingResult}
             reasoning={reasoning}
@@ -125,8 +127,9 @@ function RailTabBtn({ id, current, setTab, icon, label, badge }: {
 }
 
 /* ── AI Terminal ── */
-function AITerminal({ aiState, activities, pendingResult, reasoning, onAcceptAll, onRejectAll, onAcceptPatch }: {
+function AITerminal({ aiState, aiError, activities, pendingResult, reasoning, onAcceptAll, onRejectAll, onAcceptPatch }: {
   aiState: "idle" | "streaming" | "review" | "accepted";
+  aiError: string | null;
   activities: AIActivity[];
   pendingResult: AIRewriteResult | null;
   reasoning: string;
@@ -169,6 +172,29 @@ function AITerminal({ aiState, activities, pendingResult, reasoning, onAcceptAll
 
       {/* Pipeline progress */}
       <PipelineBar activities={activities} aiState={aiState} />
+
+      {/* Error banner */}
+      {aiError && (
+        <div style={{
+          margin: "10px 12px",
+          padding: "10px 14px",
+          background: "color-mix(in oklch, var(--red) 10%, var(--bg-1))",
+          border: "1px solid color-mix(in oklch, var(--red) 30%, transparent)",
+          borderRadius: 8,
+          flexShrink: 0,
+        }}>
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--red)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 4 }}>
+            ✕ agent error
+          </div>
+          <div style={{ fontSize: 12.5, color: "var(--fg-1)", lineHeight: 1.5 }}>
+            {aiError.includes("RESOURCE_EXHAUSTED") || aiError.includes("quota")
+              ? "Gemini API quota exhausted. Get a new API key from aistudio.google.com and update backend/.env"
+              : aiError.includes("API_KEY") || aiError.includes("invalid")
+              ? "Invalid Gemini API key. Check GOOGLE_API_KEY in backend/.env"
+              : aiError}
+          </div>
+        </div>
+      )}
 
       {/* Log area */}
       {showLog ? (

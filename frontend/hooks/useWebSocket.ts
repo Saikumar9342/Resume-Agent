@@ -6,8 +6,10 @@ import { useAuthStore } from "@/store/authStore";
 import { getWsUrl } from "@/lib/api";
 import type { WSMessage, AIRewriteResult, AIActivity } from "@/types/resume";
 
-export function useResumeWebSocket(resumeId: string | null) {
+export function useResumeWebSocket(resumeId: string | null, onError?: (msg: string) => void) {
   const wsRef = useRef<WebSocket | null>(null);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const { setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText, addActivity } =
     useResumeStore();
   const { clearAuth } = useAuthStore();
@@ -74,6 +76,7 @@ export function useResumeWebSocket(resumeId: string | null) {
 
       case "ai_error":
         setAIStreaming(false);
+        onErrorRef.current?.((msg.payload as { message: string }).message || "Unknown error");
         break;
 
       case "ghost_done":
