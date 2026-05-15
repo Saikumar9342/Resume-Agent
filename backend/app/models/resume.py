@@ -1,15 +1,15 @@
-from sqlalchemy import Column, String, Text, DateTime, JSON, Float
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import Column, String, Text, DateTime, JSON, Float, ForeignKey
 from sqlalchemy.sql import func
 import uuid
 
-Base = declarative_base()
+from app.services.database import Base
 
 
 class Resume(Base):
     __tablename__ = "resumes"
 
     id = Column(String(36), primary_key=True, default=lambda: str(uuid.uuid4()))
+    user_id = Column(String(36), ForeignKey("users.id", ondelete="CASCADE"), nullable=True, index=True)
     title = Column(String(255), nullable=False, default="Untitled Resume")
     content = Column(JSON, nullable=False, default=dict)
     raw_text = Column(Text, nullable=True)

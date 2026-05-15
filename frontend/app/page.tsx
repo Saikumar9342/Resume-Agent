@@ -1,43 +1,85 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { useResumeStore } from "@/store/resumeStore";
 import { useResumeWebSocket } from "@/hooks/useWebSocket";
 import { useAutosave } from "@/hooks/useAutosave";
-import { ResumeEditor } from "@/components/editor/ResumeEditor";
-import { DiffPanel } from "@/components/editor/DiffPanel";
-import { AIActivityFeed } from "@/components/editor/AIActivityFeed";
-import { ATSPanel } from "@/components/ats/ATSPanel";
-import { VersionHistory } from "@/components/editor/VersionHistory";
 import { api } from "@/lib/api";
+import { getVersions, restoreVersion } from "@/lib/db";
 
-type RightPanel = "diff" | "ats" | null;
+import { Landing } from "@/components/landing/Landing";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { useAuthStore } from "@/store/authStore";
+import { TopBar } from "@/components/editor/TopBar";
+import { JDBar } from "@/components/editor/JDBar";
+import { SectionTree } from "@/components/editor/SectionTree";
+import { Canvas } from "@/components/editor/Canvas";
+import { RightRail } from "@/components/editor/RightRail";
+import type { VersionEntry } from "@/components/editor/RightRail";
+import { StatusBar } from "@/components/editor/StatusBar";
+import { CommandPalette } from "@/components/editor/CommandPalette";
+import type { DiffPatch } from "@/types/resume";
+
+type Screen = "landing" | "editor";
+type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects";
+type RailTab = "ai" | "ats" | "versions";
 
 export default function HomePage() {
-  const { resume, ai, editor, setResume, markDirty } = useResumeStore();
+  const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS } = useResumeStore();
+  const { isAuthenticated } = useAuthStore();
+  const [showAuth, setShowAuth] = useState(false);
+
+  const [screen, setScreen] = useState<Screen>("landing");
   const [resumeId, setResumeId] = useState<string | null>(null);
-  const [rightPanel, setRightPanel] = useState<RightPanel>(null);
-  const [jobDescription, setJobDescription] = useState("");
   const [rawText, setRawText] = useState("");
+  const [jd, setJD] = useState("");
+  const [activeSection, setActiveSection] = useState<SectionId>("summary");
+  const [railTab, setRailTab] = useState<RailTab>("ai");
+  const [heatmap, setHeatmap] = useState(false);
+  const [paletteOpen, setPaletteOpen] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
-  const [showVersionHistory, setShowVersionHistory] = useState(false);
-  const [jdFocused, setJdFocused] = useState(false);
+  const [aiState, setAIState] = useState<"idle" | "streaming" | "review" | "accepted">("idle");
+  const [versions, setVersions] = useState<VersionEntry[]>([]);
 
   const { requestAI } = useResumeWebSocket(resumeId);
   const { saveBeforeAI } = useAutosave(resumeId);
 
+  // Sync aiState from store
   useEffect(() => {
-    if (ai.pendingResult) setRightPanel("diff");
-  }, [ai.pendingResult]);
+    if (ai.isStreaming) setAIState("streaming");
+    else if (ai.pendingResult) { setAIState("review"); setRailTab("ai"); }
+    else if (aiState === "streaming") setAIState("idle");
+  }, [ai.isStreaming, ai.pendingResult]);
 
-  const handleTextChange = useCallback(
-    (text: string) => {
-      setRawText(text);
-      if (resumeId) markDirty(true);
-    },
-    [resumeId, markDirty]
-  );
+  // Keyboard shortcuts
+  useEffect(() => {
+    if (screen !== "editor") return;
+    const h = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey;
+      if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
+      else if (mod && e.key === "Enter") { e.preventDefault(); handleAIRewrite(); }
+      else if (mod && e.key.toLowerCase() === "h") { e.preventDefault(); setHeatmap(v => !v); }
+      else if (e.key === "Escape") setPaletteOpen(false);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [screen, resumeId, rawText, jd]);
+
+  // Load versions when switching to versions tab
+  useEffect(() => {
+    if (railTab === "versions" && resumeId) {
+      getVersions(resumeId).then(vs => {
+        setVersions(vs.map((v, i) => ({
+          id: String(v.savedAt),
+          label: `v${vs.length - i}`,
+          note: v.label || "Auto-save",
+          time: formatTime(v.savedAt),
+          score: undefined,
+          current: i === 0,
+        })));
+      });
+    }
+  }, [railTab, resumeId]);
 
   const handleCreate = async () => {
     setIsCreating(true);
@@ -45,343 +87,247 @@ export default function HomePage() {
       const r = await api.createResume("My Resume", rawText || undefined);
       setResume(r);
       setResumeId(r.id);
+      setScreen("editor");
+      markDirty(false);
     } finally {
       setIsCreating(false);
     }
   };
 
+  const handleBoot = () => {
+    if (!isAuthenticated()) { setShowAuth(true); return; }
+    setScreen("editor");
+  };
+
   const handleAIRewrite = async () => {
-    if (!resumeId || !rawText) return;
+    if (!resumeId && !rawText) return;
+    if (!resumeId) { await handleCreate(); return; }
     await saveBeforeAI();
-    requestAI(rawText, jobDescription || undefined);
+    requestAI(rawText, jd || undefined);
+    setRailTab("ai");
   };
 
   const handleATSAnalyze = async () => {
     if (!resumeId) return;
-    setRightPanel("ats");
-    const analysis = await api.analyzeATS(resumeId, jobDescription || undefined);
-    useResumeStore.getState().setATS(analysis);
+    setRailTab("ats");
+    try {
+      const analysis = await api.analyzeATS(resumeId, jd || undefined);
+      setATS(analysis);
+    } catch (err) {
+      console.error("ATS analysis failed", err);
+    }
   };
 
-  return (
-    <div className="h-screen flex flex-col bg-[#f8f9fc] overflow-hidden">
+  const handleExport = async () => {
+    if (!resumeId) return;
+    const url = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`;
+    window.open(url, "_blank");
+  };
 
-      {/* ── Top Navigation ── */}
-      <header className="h-14 bg-white border-b border-slate-200/80 px-5 flex items-center justify-between shrink-0 z-10">
-        {/* Left: Logo + breadcrumb */}
-        <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-violet-600 to-indigo-600 flex items-center justify-center shadow-sm shadow-violet-200">
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
-              <path d="M3 3h10v2H3V3zM3 7h7v2H3V7zM3 11h5v2H3v-2z" fill="white" fillOpacity="0.9"/>
-              <circle cx="12" cy="12" r="2.5" fill="white" fillOpacity="0.7"/>
-            </svg>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="font-semibold text-slate-800 text-sm tracking-tight">Resume Agent</span>
-            {resume && (
-              <>
-                <span className="text-slate-300 text-sm">/</span>
-                <span className="text-slate-500 text-sm">{resume.title}</span>
-              </>
-            )}
-          </div>
+  const handleRestoreVersion = async (versionId: string) => {
+    if (!resumeId) return;
+    const vs = await getVersions(resumeId);
+    const v = vs.find(x => String(x.savedAt) === versionId);
+    if (v && v.id != null) {
+      const restored = await restoreVersion(v.id);
+      if (restored) {
+        await api.updateResume(resumeId, { content: restored.content });
+        const updated = await api.getResume(resumeId);
+        setResume(updated);
+      }
+    }
+  };
 
-          {/* Save pill */}
-          <AnimatePresence>
-            {resumeId && (
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-                  editor.isDirty
-                    ? "bg-amber-50 text-amber-600"
-                    : "bg-emerald-50 text-emerald-600"
-                }`}
-              >
-                <span className={`w-1.5 h-1.5 rounded-full ${editor.isDirty ? "bg-amber-400 animate-pulse" : "bg-emerald-400"}`} />
-                {editor.isDirty ? "Saving…" : "Saved"}
-              </motion.div>
-            )}
-          </AnimatePresence>
-        </div>
+  const handleAcceptAll = () => {
+    acceptAISuggestion();
+    setAIState("accepted");
+  };
 
-        {/* Right: Actions */}
-        <div className="flex items-center gap-2">
-          {resumeId && (
-            <button
-              onClick={() => setShowVersionHistory(true)}
-              className="h-8 px-3 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-all flex items-center gap-1.5"
-            >
-              <svg width="13" height="13" viewBox="0 0 13 13" fill="none">
-                <path d="M6.5 1a5.5 5.5 0 100 11A5.5 5.5 0 006.5 1zm0 1a4.5 4.5 0 110 9 4.5 4.5 0 010-9zm-.5 2v3.25l2.5 1.5-.5.75-3-1.75V4h1z" fill="currentColor"/>
-              </svg>
-              History
-            </button>
-          )}
+  const handleRejectAll = () => {
+    rejectAISuggestion();
+    setAIState("idle");
+  };
 
-          {!resumeId ? (
-            <motion.button
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-              onClick={handleCreate}
-              disabled={isCreating}
-              className="h-9 px-5 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium rounded-xl shadow-sm shadow-violet-200 hover:shadow-md hover:shadow-violet-200 transition-all disabled:opacity-60 flex items-center gap-2"
-            >
-              {isCreating ? (
-                <>
-                  <motion.span
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                    className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full inline-block"
-                  />
-                  Creating…
-                </>
-              ) : (
-                <>
-                  <span className="text-white/80">+</span>
-                  Start Resume
-                </>
-              )}
-            </motion.button>
-          ) : (
-            <div className="flex items-center gap-2">
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleATSAnalyze}
-                className="h-9 px-4 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:border-slate-300 hover:bg-slate-50 transition-all flex items-center gap-2"
-              >
-                <span className="text-base leading-none">📊</span>
-                ATS Score
-              </motion.button>
+  const handleAcceptPatch = (patch: DiffPatch) => {
+    acceptPatch(patch);
+  };
 
-              <motion.button
-                whileHover={{ scale: 1.02 }}
-                whileTap={{ scale: 0.98 }}
-                onClick={handleAIRewrite}
-                disabled={ai.isStreaming}
-                className="h-9 px-4 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium rounded-xl shadow-sm shadow-violet-200 hover:shadow-md transition-all disabled:opacity-60 flex items-center gap-2"
-              >
-                {ai.isStreaming ? (
-                  <>
-                    <motion.span
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 0.8, repeat: Infinity, ease: "linear" }}
-                      className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full inline-block"
-                    />
-                    Rewriting…
-                  </>
-                ) : (
-                  <>
-                    <span className="text-base leading-none">✦</span>
-                    AI Rewrite
-                  </>
-                )}
-              </motion.button>
-            </div>
-          )}
-        </div>
-      </header>
+  const handleCommand = (id: string) => {
+    setPaletteOpen(false);
+    if (id === "ai.rewrite") handleAIRewrite();
+    else if (id === "ats.run") handleATSAnalyze();
+    else if (id === "ats.heatmap") setHeatmap(v => !v);
+    else if (id === "view.versions") setRailTab("versions");
+    else if (id === "section.summary") setActiveSection("summary");
+    else if (id === "section.exp") setActiveSection("experience");
+    else if (id === "section.edu") setActiveSection("education");
+    else if (id === "section.skills") setActiveSection("skills");
+    else if (id === "export.pdf") handleExport();
+  };
 
-      {/* ── Job Description Bar ── */}
-      <div className={`shrink-0 bg-white border-b transition-all duration-200 ${jdFocused ? "border-violet-200 shadow-sm shadow-violet-50" : "border-slate-200/80"}`}>
-        <div className="px-5 py-2.5 flex items-center gap-3">
-          <span className="text-slate-300 text-sm shrink-0">🎯</span>
-          <input
-            type="text"
-            placeholder="Paste a job description or role keywords to tailor your resume…"
-            value={jobDescription}
-            onChange={(e) => setJobDescription(e.target.value)}
-            onFocus={() => setJdFocused(true)}
-            onBlur={() => setJdFocused(false)}
-            className="flex-1 text-sm text-slate-700 placeholder:text-slate-400 outline-none bg-transparent"
+  const wordCount = rawText ? rawText.split(/\s+/).filter(Boolean).length : 0;
+
+  if (screen === "landing") {
+    return (
+      <>
+        <Landing onBoot={handleBoot} />
+        {showAuth && (
+          <AuthModal
+            onSuccess={() => { setShowAuth(false); setScreen("editor"); }}
           />
-          {jobDescription && (
-            <button
-              onClick={() => setJobDescription("")}
-              className="text-slate-300 hover:text-slate-500 text-xs transition-colors shrink-0"
-            >
-              ✕
-            </button>
-          )}
-        </div>
-      </div>
+        )}
+      </>
+    );
+  }
 
-      {/* ── Main Layout ── */}
-      <div className="flex flex-1 overflow-hidden">
+  // Guard editor — if token was cleared (sign out) drop back to landing
+  if (!isAuthenticated()) {
+    return (
+      <>
+        <Landing onBoot={handleBoot} />
+        <AuthModal onSuccess={() => { setShowAuth(false); setScreen("editor"); }} />
+      </>
+    );
+  }
 
-        {/* Editor area */}
-        <main className="flex-1 overflow-y-auto">
-          {/* Empty state */}
-          {!resumeId && (
-            <div className="h-full flex flex-col items-center justify-center gap-8 px-6 pb-16">
-              <motion.div
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5 }}
-                className="text-center max-w-md"
-              >
-                <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-violet-100 to-indigo-100 flex items-center justify-center mx-auto mb-5 shadow-sm">
-                  <span className="text-3xl">✦</span>
+  return (
+    <div style={{
+      height: "100%",
+      display: "grid",
+      gridTemplateRows: "auto auto 1fr auto",
+      background: "var(--bg-0)",
+      overflow: "hidden",
+    }}>
+      <TopBar
+        resumeTitle={resume?.title}
+        onPalette={() => setPaletteOpen(true)}
+        onRunAI={handleAIRewrite}
+        onHistory={() => setRailTab("versions")}
+        onExport={handleExport}
+        onBack={() => setScreen("landing")}
+        aiState={aiState}
+        isDirty={editor.isDirty}
+      />
+
+      <JDBar
+        jd={jd}
+        setJD={setJD}
+        matchedKeywords={ats ? ats.checkpoints.filter(c => c.passed).length : 0}
+        missingKeywords={ats ? ats.missing_keywords.length : 0}
+      />
+
+      {/* 3-pane */}
+      <div style={{ display: "grid", gridTemplateColumns: "220px minmax(0,1fr) 400px", minHeight: 0, overflow: "hidden" }}>
+        <SectionTree
+          resume={resume?.content ?? null}
+          active={activeSection}
+          onSelect={setActiveSection}
+          heatmap={heatmap}
+        />
+
+        {!resumeId ? (
+          /* Pre-create: raw text entry */
+          <main style={{
+            background: "var(--bg-0)",
+            display: "flex", flexDirection: "column",
+            minHeight: 0, borderRight: "1px solid var(--line)",
+          }}>
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "40px 36px" }}>
+              <div style={{
+                width: 760, maxWidth: "100%",
+                background: "var(--bg-1)",
+                border: "1px solid var(--line)",
+                borderRadius: 12,
+                padding: "48px 56px",
+                boxShadow: "0 40px 60px -30px black",
+              }}>
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.1em", marginBottom: 16 }}>
+                  paste your resume · or start typing
                 </div>
-                <h1 className="text-2xl font-semibold text-slate-800 mb-2 tracking-tight">
-                  Build your perfect resume
-                </h1>
-                <p className="text-slate-500 text-sm leading-relaxed">
-                  Paste your existing resume or start fresh. AI will help you optimize for ATS, improve your bullets, and tailor it to any role.
-                </p>
-              </motion.div>
-
-              {/* Feature pills */}
-              <motion.div
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.15, duration: 0.4 }}
-                className="flex flex-wrap justify-center gap-2"
-              >
-                {[
-                  { icon: "⚡", label: "Real-time AI suggestions" },
-                  { icon: "📊", label: "ATS score analysis" },
-                  { icon: "🔀", label: "Visual diff & track changes" },
-                  { icon: "💾", label: "Auto-save & version history" },
-                ].map((f) => (
-                  <div key={f.label} className="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-slate-200 rounded-full text-xs text-slate-600 shadow-sm">
-                    <span>{f.icon}</span>
-                    {f.label}
-                  </div>
-                ))}
-              </motion.div>
-
-              <motion.div
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                transition={{ delay: 0.3 }}
-                className="w-full max-w-2xl"
-              >
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <ResumeEditor onTextChange={handleTextChange} />
-                </div>
-                <div className="mt-4 flex justify-center">
-                  <motion.button
-                    whileHover={{ scale: 1.02 }}
-                    whileTap={{ scale: 0.98 }}
+                <textarea
+                  value={rawText}
+                  onChange={e => { setRawText(e.target.value); markDirty(true); }}
+                  placeholder="Paste your resume here to get started. The AI will parse it into sections automatically."
+                  style={{
+                    width: "100%", minHeight: 400,
+                    fontFamily: "var(--sans)", fontSize: 13, lineHeight: 1.6,
+                    color: "var(--fg-1)", background: "transparent",
+                    resize: "vertical",
+                  }}
+                />
+                <div style={{ marginTop: 24, display: "flex", gap: 10 }}>
+                  <button
                     onClick={handleCreate}
-                    disabled={isCreating}
-                    className="h-11 px-8 bg-gradient-to-r from-violet-600 to-indigo-600 text-white text-sm font-medium rounded-xl shadow-md shadow-violet-200 hover:shadow-lg hover:shadow-violet-200 transition-all disabled:opacity-60 flex items-center gap-2"
+                    disabled={isCreating || !rawText}
+                    className="btn btn-accent mono"
+                    style={{ height: 34, fontSize: 12, padding: "0 16px" }}
                   >
-                    {isCreating ? "Creating…" : "✦  Start with AI"}
-                  </motion.button>
-                </div>
-              </motion.div>
-            </div>
-          )}
-
-          {/* Active editor */}
-          {resumeId && (
-            <div className="p-6">
-              <div className="max-w-3xl mx-auto space-y-4">
-                <AIActivityFeed />
-                <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-                  <ResumeEditor onTextChange={handleTextChange} />
+                    {isCreating ? "creating…" : "start with AI →"}
+                  </button>
+                  <button
+                    onClick={() => { setResumeId("demo"); setScreen("editor"); }}
+                    className="btn btn-ghost mono"
+                    style={{ height: 34, fontSize: 12 }}
+                  >
+                    load sample
+                  </button>
                 </div>
               </div>
             </div>
-          )}
-        </main>
+          </main>
+        ) : (
+          <Canvas
+            resume={resume?.content ?? null}
+            rawText={rawText}
+            activeSection={activeSection}
+            heatmap={heatmap}
+            onToggleHeatmap={() => setHeatmap(v => !v)}
+            aiState={aiState}
+            ats={ats}
+            onTextChange={text => { setRawText(text); markDirty(true); }}
+          />
+        )}
 
-        {/* ── Right Panel ── */}
-        <AnimatePresence>
-          {rightPanel && (
-            <motion.aside
-              key="right-panel"
-              initial={{ width: 0, opacity: 0 }}
-              animate={{ width: 400, opacity: 1 }}
-              exit={{ width: 0, opacity: 0 }}
-              transition={{ duration: 0.3, ease: [0.25, 0.46, 0.45, 0.94] }}
-              className="shrink-0 border-l border-slate-200/80 bg-white overflow-hidden flex flex-col"
-            >
-              <div className="flex flex-col h-full min-w-[400px]">
-                {/* Panel header */}
-                <div className="px-5 pt-5 pb-4 border-b border-slate-100 shrink-0">
-                  <div className="flex items-center gap-1">
-                    <PanelTab
-                      label="AI Suggestions"
-                      icon="✦"
-                      active={rightPanel === "diff"}
-                      onClick={() => setRightPanel("diff")}
-                      badge={ai.pendingResult?.diff_patches.length}
-                    />
-                    <PanelTab
-                      label="ATS Analysis"
-                      icon="📊"
-                      active={rightPanel === "ats"}
-                      onClick={() => setRightPanel("ats")}
-                      badge={
-                        useResumeStore.getState().ats?.score !== undefined
-                          ? undefined
-                          : undefined
-                      }
-                    />
-                    <button
-                      onClick={() => setRightPanel(null)}
-                      className="ml-auto w-7 h-7 flex items-center justify-center text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-all text-sm"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                </div>
-
-                {/* Panel content */}
-                <div className="flex-1 overflow-y-auto p-5">
-                  {rightPanel === "diff" && <DiffPanel />}
-                  {rightPanel === "ats" && <ATSPanel />}
-                </div>
-              </div>
-            </motion.aside>
-          )}
-        </AnimatePresence>
+        <RightRail
+          tab={railTab}
+          setTab={setRailTab}
+          aiState={aiState}
+          activities={ai.activities}
+          pendingResult={ai.pendingResult}
+          reasoning={ai.reasoning}
+          onAcceptAll={handleAcceptAll}
+          onRejectAll={handleRejectAll}
+          onAcceptPatch={handleAcceptPatch}
+          ats={ats}
+          heatmap={heatmap}
+          setHeatmap={setHeatmap}
+          versions={versions}
+          onRestoreVersion={handleRestoreVersion}
+        />
       </div>
 
-      {/* Version history modal */}
-      {showVersionHistory && resumeId && (
-        <VersionHistory
-          resumeId={resumeId}
-          onClose={() => setShowVersionHistory(false)}
+      <StatusBar
+        ats={ats}
+        aiState={aiState}
+        wordCount={wordCount}
+        heatmap={heatmap}
+        version={resume?.version ? `v${resume.version}` : undefined}
+      />
+
+      {paletteOpen && (
+        <CommandPalette
+          onClose={() => setPaletteOpen(false)}
+          onCommand={handleCommand}
         />
       )}
     </div>
   );
 }
 
-function PanelTab({
-  label,
-  icon,
-  active,
-  onClick,
-  badge,
-}: {
-  label: string;
-  icon: string;
-  active: boolean;
-  onClick: () => void;
-  badge?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`h-8 px-3 text-xs rounded-lg font-medium transition-all flex items-center gap-1.5 ${
-        active
-          ? "bg-violet-50 text-violet-700 shadow-sm"
-          : "text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-      }`}
-    >
-      <span className="text-sm leading-none">{icon}</span>
-      {label}
-      {badge !== undefined && badge > 0 && (
-        <span className="bg-violet-600 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px] font-bold">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
+function formatTime(ts: number): string {
+  const diff = Date.now() - ts;
+  if (diff < 60000) return "just now";
+  if (diff < 3600000) return `${Math.round(diff / 60000)}m ago`;
+  if (diff < 86400000) return `${Math.round(diff / 3600000)}h ago`;
+  return `${Math.round(diff / 86400000)}d ago`;
 }

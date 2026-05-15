@@ -2,9 +2,8 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useResumeStore } from "@/store/resumeStore";
+import { getWsUrl } from "@/lib/api";
 import type { WSMessage, AIRewriteResult, AIActivity } from "@/types/resume";
-
-const WS_BASE = process.env.NEXT_PUBLIC_WS_URL ?? "ws://localhost:8000";
 
 export function useResumeWebSocket(resumeId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -14,7 +13,7 @@ export function useResumeWebSocket(resumeId: string | null) {
   useEffect(() => {
     if (!resumeId) return;
 
-    const ws = new WebSocket(`${WS_BASE}/ws/resume/${resumeId}`);
+    const ws = new WebSocket(getWsUrl(resumeId));
     wsRef.current = ws;
 
     ws.onmessage = (event) => {

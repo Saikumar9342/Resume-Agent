@@ -7,7 +7,8 @@ Supports:
 """
 
 from fastapi import WebSocket, WebSocketDisconnect
-from typing import Dict
+from typing import Dict, Optional
+from app.services.auth import decode_token
 
 from app.agents.pipeline import run_pipeline
 from app.services.diff import generate_diff_patches
@@ -17,7 +18,13 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 _connections: Dict[str, set] = {}
 
 
-async def ws_connect(resume_id: str, ws: WebSocket):
+async def ws_connect(resume_id: str, ws: WebSocket, token: Optional[str] = None):
+    # Validate JWT if provided (close with 4001 if invalid)
+    if token:
+        payload = decode_token(token)
+        if not payload:
+            await ws.close(code=4001)
+            return
     await ws.accept()
     _connections.setdefault(resume_id, set()).add(ws)
     try:
