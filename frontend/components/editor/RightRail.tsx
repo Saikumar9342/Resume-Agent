@@ -27,6 +27,7 @@ interface RightRailProps {
   resumeId: string | null;
   resume: ResumeContent | null;
   jd: string;
+  onATSFix?: () => void;
 }
 
 export interface VersionEntry {
@@ -44,6 +45,7 @@ export function RightRail({
   ats, heatmap, setHeatmap,
   versions, onRestoreVersion,
   resumeId, resume, jd,
+  onATSFix,
 }: RightRailProps) {
   const diffCount = pendingResult?.diff_patches.length ?? 0;
   const atsScore = ats?.score ?? null;
@@ -88,7 +90,7 @@ export function RightRail({
             onAcceptPatch={onAcceptPatch}
           />
         )}
-        {tab === "ats" && <ATSPane ats={ats} heatmap={heatmap} setHeatmap={setHeatmap} />}
+        {tab === "ats" && <ATSPane ats={ats} heatmap={heatmap} setHeatmap={setHeatmap} onFix={onATSFix} aiState={aiState} />}
         {tab === "versions" && <VersionsPane versions={versions} onRestore={onRestoreVersion} />}
         {tab === "cover" && <CoverLetterPane resumeId={resumeId} resume={resume} jd={jd} />}
       </div>
@@ -375,7 +377,10 @@ function DiffCard({ patch, index, onAccept }: { patch: DiffPatch; index: number;
 }
 
 /* ── ATS Pane ── */
-function ATSPane({ ats, heatmap, setHeatmap }: { ats: ATSAnalysis | null; heatmap: boolean; setHeatmap: (v: boolean) => void }) {
+function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
+  ats: ATSAnalysis | null; heatmap: boolean; setHeatmap: (v: boolean) => void;
+  onFix?: () => void; aiState?: string;
+}) {
   if (!ats) {
     return (
       <EmptyState
@@ -386,6 +391,8 @@ function ATSPane({ ats, heatmap, setHeatmap }: { ats: ATSAnalysis | null; heatma
     );
   }
   const isReady = ats.score >= 80;
+  const failCount = ats.checkpoints.filter(c => !c.passed).length;
+  const isBusy = aiState === "streaming" || aiState === "review";
   return (
     <div style={{ overflow: "auto", flex: 1 }}>
       {/* score hero */}
@@ -404,11 +411,25 @@ function ATSPane({ ats, heatmap, setHeatmap }: { ats: ATSAnalysis | null; heatma
             </div>
           </div>
         </div>
+
+        {/* Fix All button */}
+        {!isReady && onFix && (
+          <button
+            onClick={onFix}
+            disabled={isBusy}
+            className="btn btn-accent mono"
+            style={{ marginTop: 12, width: "100%", justifyContent: "center", height: 32, fontSize: 12 }}
+          >
+            <Icon name="sparkle" size={11} />
+            {isBusy ? "fixing…" : `auto-fix ${failCount} issue${failCount !== 1 ? "s" : ""} with AI`}
+          </button>
+        )}
+
         <button
           onClick={() => setHeatmap(!heatmap)}
           className="btn mono"
           style={{
-            marginTop: 14, width: "100%", justifyContent: "center",
+            marginTop: 8, width: "100%", justifyContent: "center",
             background: heatmap ? "var(--accent-soft)" : "var(--bg-2)",
             color: heatmap ? "var(--accent)" : "var(--fg-1)",
             borderColor: heatmap ? "var(--accent-line)" : "var(--line)",

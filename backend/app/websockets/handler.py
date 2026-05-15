@@ -50,7 +50,7 @@ async def _stream_section(ws: WebSocket, section: str, content: str, delay: floa
             await asyncio.sleep(delay)
 
 
-async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section: Optional[str]):
+async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section: Optional[str], instructions: Optional[str] = None):
     await ws.send_json({"type": "ai_stream_start", "payload": {}})
 
     async def on_activity(node: str, message: str, model: str = ""):
@@ -61,6 +61,7 @@ async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section
         raw_text=raw_text,
         job_description=job_desc,
         section=section,
+        instructions=instructions,
         on_activity=on_activity,
     )
 
@@ -125,7 +126,7 @@ async def _run_ai(ws: WebSocket, raw_text: str, job_desc: Optional[str], section
         await ws.send_json({"type": "section_done", "payload": {"section": "contact", "content": contact}})
 
     # Final full suggestion + diff patches
-    patches = generate_diff_patches(structured, final)
+    patches = generate_diff_patches(structured or {}, final or {})
     await ws.send_json({
         "type": "ai_suggestion",
         "payload": {
@@ -161,8 +162,9 @@ async def _handle(resume_id: str, ws: WebSocket):
             raw_text = payload.get("raw_text", "")
             job_desc = payload.get("job_description")
             section = payload.get("section")
+            instructions = payload.get("instructions")
 
-            ai_task = asyncio.create_task(_run_ai(ws, raw_text, job_desc, section))
+            ai_task = asyncio.create_task(_run_ai(ws, raw_text, job_desc, section, instructions))
             try:
                 await ai_task
             except asyncio.CancelledError:

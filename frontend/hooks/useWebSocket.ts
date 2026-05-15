@@ -159,12 +159,12 @@ export function useResumeWebSocket(resumeId: string | null, onError?: (msg: stri
   }, [withConnection]);
 
   const requestAI = useCallback(
-    (rawText: string, jobDescription?: string, section?: string) => {
+    (rawText: string, jobDescription?: string, section?: string, instructions?: string) => {
       withConnection(() => {
         wsRef.current?.send(
           JSON.stringify({
             type: "request_ai",
-            payload: { raw_text: rawText, job_description: jobDescription, section },
+            payload: { raw_text: rawText, job_description: jobDescription, section, instructions },
           })
         );
       });

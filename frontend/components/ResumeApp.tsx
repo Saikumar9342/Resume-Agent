@@ -102,7 +102,7 @@ export function ResumeApp() {
     }
   }, [railTab, resumeId]);
 
-  const handleCreate = async () => {
+  const handleCreate = async (): Promise<string | null> => {
     setIsCreating(true);
     try {
       const r = await api.createResume("My Resume", rawText || undefined);
@@ -110,6 +110,9 @@ export function ResumeApp() {
       setResumeId(r.id);
       setScreen("editor");
       markDirty(false);
+      return r.id;
+    } catch {
+      return null;
     } finally {
       setIsCreating(false);
     }
@@ -122,7 +125,13 @@ export function ResumeApp() {
 
   const handleAIRewrite = async (section?: string) => {
     if (!resumeId && !rawText) return;
-    if (!resumeId) { await handleCreate(); return; }
+    let id = resumeId;
+    if (!id) {
+      id = await handleCreate();
+      if (!id) return;
+      // Wait one tick for WebSocket to connect with the new resumeId
+      await new Promise(r => setTimeout(r, 600));
+    }
     setAIError(null);
     await saveBeforeAI();
     requestAI(rawText, jd || undefined, section);
@@ -140,6 +149,21 @@ export function ResumeApp() {
     } catch (err) {
       console.error("ATS analysis failed", err);
     }
+  };
+
+  const handleATSFix = async () => {
+    if (!resumeId || !ats) return;
+    const failing = ats.checkpoints.filter(c => !c.passed).map(c => c.label);
+    const missing = ats.missing_keywords.slice(0, 10);
+    const instructions = [
+      "Fix the following ATS issues in this resume:",
+      ...failing.map(f => `- ${f}`),
+      missing.length > 0 ? `- Naturally incorporate these missing keywords where relevant: ${missing.join(", ")}` : "",
+    ].filter(Boolean).join("\n");
+    setAIError(null);
+    await saveBeforeAI();
+    requestAI(rawText, jd || undefined, undefined, instructions);
+    setRailTab("ai");
   };
 
   const handleExport = () => {
@@ -372,7 +396,7 @@ export function ResumeApp() {
                 />
                 <div style={{ marginTop: 24, display: "flex", gap: 10 }}>
                   <button
-                    onClick={handleCreate}
+                    onClick={() => handleAIRewrite()}
                     disabled={isCreating || !rawText}
                     className="btn btn-accent mono"
                     style={{ height: 34, fontSize: 12, padding: "0 16px" }}
@@ -425,6 +449,7 @@ export function ResumeApp() {
           resumeId={resumeId}
           resume={resume?.content ?? null}
           jd={jd}
+          onATSFix={handleATSFix}
         />
       </div>
 
