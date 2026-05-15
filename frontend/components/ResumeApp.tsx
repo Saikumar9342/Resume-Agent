@@ -18,10 +18,11 @@ import { RightRail } from "@/components/editor/RightRail";
 import type { VersionEntry } from "@/components/editor/RightRail";
 import { StatusBar } from "@/components/editor/StatusBar";
 import { CommandPalette } from "@/components/editor/CommandPalette";
+import { PrintPreview } from "@/components/editor/PrintPreview";
 import type { DiffPatch } from "@/types/resume";
 
 type Screen = "landing" | "editor";
-type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects";
+type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
 type RailTab = "ai" | "ats" | "versions";
 
 export function ResumeApp() {
@@ -41,8 +42,9 @@ export function ResumeApp() {
   const [aiState, setAIState] = useState<"idle" | "streaming" | "review" | "accepted">("idle");
   const [aiError, setAIError] = useState<string | null>(null);
   const [versions, setVersions] = useState<VersionEntry[]>([]);
+  const [printing, setPrinting] = useState(false);
 
-  const { requestAI, cancelAI } = useResumeWebSocket(resumeId, (msg) => {
+  const { requestAI, cancelAI, requestGhost } = useResumeWebSocket(resumeId, (msg) => {
     setAIError(msg);
     setAIState("idle");
     setRailTab("ai");
@@ -106,14 +108,16 @@ export function ResumeApp() {
     setScreen("editor");
   };
 
-  const handleAIRewrite = async () => {
+  const handleAIRewrite = async (section?: string) => {
     if (!resumeId && !rawText) return;
     if (!resumeId) { await handleCreate(); return; }
     setAIError(null);
     await saveBeforeAI();
-    requestAI(rawText, jd || undefined);
+    requestAI(rawText, jd || undefined, section);
     setRailTab("ai");
   };
+
+  const handleSectionRewrite = (section: string) => handleAIRewrite(section);
 
   const handleATSAnalyze = async () => {
     if (!resumeId) return;
@@ -126,25 +130,20 @@ export function ResumeApp() {
     }
   };
 
-  const handleExport = async () => {
+  const handleExport = () => {
+    if (resume?.content) { setPrinting(true); return; }
+    // fallback: download HTML from backend
     if (!resumeId) return;
-    try {
-      const { token } = useAuthStore.getState();
-      const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      if (!res.ok) throw new Error(`${res.status}`);
-      const blob = await res.blob();
-      const ct = res.headers.get("content-type") ?? "";
-      const ext = ct.includes("pdf") ? "pdf" : ct.includes("html") ? "html" : "txt";
+    const { token } = useAuthStore.getState();
+    fetch(
+      `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`,
+      { headers: { Authorization: `Bearer ${token}` } }
+    ).then(r => r.blob()).then(blob => {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = `${resume?.title ?? "resume"}.${ext}`; a.click();
+      a.href = url; a.download = `${resume?.title ?? "resume"}.html`; a.click();
       URL.revokeObjectURL(url);
-    } catch (e) {
-      console.error("Export failed", e);
-    }
+    }).catch(e => console.error("Export failed", e));
   };
 
   const handleTitleChange = async (title: string) => {
@@ -255,8 +254,7 @@ export function ResumeApp() {
       <JDBar
         jd={jd}
         setJD={setJD}
-        matchedKeywords={ats ? ats.checkpoints.filter(c => c.passed).length : 0}
-        missingKeywords={ats ? ats.missing_keywords.length : 0}
+        resume={resume?.content ?? null}
       />
 
       {/* 3-pane */}
@@ -266,6 +264,19 @@ export function ResumeApp() {
           active={activeSection}
           onSelect={setActiveSection}
           heatmap={heatmap}
+          currentResumeId={resumeId}
+          onSwitchResume={async (r) => {
+            const full = await api.getResume(r.id);
+            setResume(full);
+            setResumeId(full.id);
+            setRawText(full.raw_text ?? "");
+            markDirty(false);
+          }}
+          onNewResume={() => {
+            setResumeId(null);
+            setRawText("");
+            setScreen("editor");
+          }}
         />
 
         {!resumeId ? (
@@ -328,6 +339,8 @@ export function ResumeApp() {
             aiState={aiState}
             ats={ats}
             onTextChange={text => { setRawText(text); markDirty(true); }}
+            onSectionRewrite={handleSectionRewrite}
+            requestGhost={requestGhost}
           />
         )}
 
@@ -364,6 +377,14 @@ export function ResumeApp() {
         <CommandPalette
           onClose={() => setPaletteOpen(false)}
           onCommand={handleCommand}
+        />
+      )}
+
+      {printing && resume?.content && (
+        <PrintPreview
+          resume={resume.content}
+          title={resume.title}
+          onClose={() => setPrinting(false)}
         />
       )}
     </div>

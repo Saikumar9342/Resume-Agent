@@ -124,17 +124,20 @@ export function Landing({ onBoot }: LandingProps) {
             </button>
           </div>
 
-          {/* Stat row */}
+          {/* Feature chips */}
           <div style={{
-            marginTop: 56,
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
+            marginTop: 48,
+            display: "flex", flexWrap: "wrap", gap: 8,
             borderTop: "1px solid var(--line-soft)",
-            paddingTop: 22,
+            paddingTop: 20,
           }}>
-            <Stat k="median ats lift" v="+27 pts" />
-            <Stat k="time to first patch" v="6.4s" />
-            <Stat k="trusted by" v="14k engineers" />
+            {["inline editing","section-level AI rewrite","live JD matching","diff patches","ATS heatmap","version history","PDF export","ghost autocomplete"].map(f => (
+              <span key={f} className="mono" style={{
+                fontSize: 10.5, padding: "3px 9px",
+                background: "var(--bg-2)", border: "1px solid var(--line)",
+                borderRadius: 4, color: "var(--fg-2)",
+              }}>{f}</span>
+            ))}
           </div>
         </div>
 
@@ -147,30 +150,17 @@ export function Landing({ onBoot }: LandingProps) {
       {/* Footer */}
       <footer style={{
         position: "relative", zIndex: 2,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
+        display: "flex", alignItems: "center", justifyContent: "flex-end",
         padding: "12px 28px",
         borderTop: "1px solid var(--line-soft)",
         background: "var(--bg-1)",
         fontSize: 11,
       }}>
-        <div className="mono" style={{ display: "flex", gap: 20, color: "var(--fg-3)" }}>
-          <span>main</span>
-          <span>● 0 issues</span>
-        </div>
         <div className="mono" style={{ display: "flex", gap: 14, color: "var(--fg-3)" }}>
           <span><span className="kbd">⌘</span> <span className="kbd">K</span> commands</span>
           <span><span className="kbd">↵</span> boot</span>
         </div>
       </footer>
-    </div>
-  );
-}
-
-function Stat({ k, v }: { k: string; v: string }) {
-  return (
-    <div>
-      <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.06em" }}>{k}</div>
-      <div style={{ fontSize: 22, marginTop: 4, letterSpacing: "-0.02em", fontWeight: 500 }}>{v}</div>
     </div>
   );
 }

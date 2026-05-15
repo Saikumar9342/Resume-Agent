@@ -120,3 +120,14 @@ button:focus-visible { outline: 1px solid var(--accent); outline-offset: 2px; }
   border: 1px solid var(--line); border-bottom-width: 2px;
   border-radius: 4px; color: var(--fg-2); background: var(--bg-1); line-height: 1.4;
 }
+
+/* Bullet hover — show delete button */
+.bullet-hover:hover { background: color-mix(in oklch, var(--bg-2) 60%, transparent) !important; }
+.bullet-hover:hover .bullet-del { opacity: 1 !important; }
+
+/* Print styles for PDF export */
+@media print {
+  body { overflow: visible; height: auto; background: white; color: black; }
+  #resume-print-root { display: block !important; }
+  #app-root { display: none !important; }
+}
