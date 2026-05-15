@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from "react";
 import { useResumeStore } from "@/store/resumeStore";
+import { useAuthStore } from "@/store/authStore";
 import { getWsUrl } from "@/lib/api";
 import type { WSMessage, AIRewriteResult, AIActivity } from "@/types/resume";
 
@@ -9,6 +10,7 @@ export function useResumeWebSocket(resumeId: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
   const { setAIStreaming, setPendingAIResult, appendGhostToken, clearGhostText, addActivity } =
     useResumeStore();
+  const { clearAuth } = useAuthStore();
 
   useEffect(() => {
     if (!resumeId) return;
@@ -22,7 +24,13 @@ export function useResumeWebSocket(resumeId: string | null) {
     };
 
     ws.onerror = () => console.error("[WS] connection error");
-    ws.onclose = () => console.log("[WS] disconnected");
+
+    ws.onclose = (event) => {
+      // 4001 = invalid token (set by our backend), 1008 = policy violation (403)
+      if (event.code === 4001 || event.code === 1008) {
+        clearAuth();   // wipe stale token → page.tsx will show AuthModal
+      }
+    };
 
     const ping = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
