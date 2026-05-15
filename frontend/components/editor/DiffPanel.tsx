@@ -8,55 +8,64 @@ export function DiffPanel() {
   const { ai, acceptAISuggestion, rejectAISuggestion, acceptPatch } = useResumeStore();
   const result = ai.pendingResult;
 
-  if (!result) return null;
+  if (!result) {
+    return (
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="w-12 h-12 rounded-2xl bg-slate-50 flex items-center justify-center mb-4">
+          <span className="text-2xl">✦</span>
+        </div>
+        <p className="text-sm font-medium text-slate-500">No suggestions yet</p>
+        <p className="text-xs text-slate-400 mt-1">Click AI Rewrite to get started</p>
+      </div>
+    );
+  }
 
   return (
     <AnimatePresence>
       <motion.div
         key="diff-panel"
-        initial={{ x: 40, opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: 40, opacity: 0 }}
-        transition={{ duration: 0.35, ease: "easeOut" }}
-        className="flex flex-col gap-4 h-full"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        className="flex flex-col gap-5"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold text-slate-900 text-sm">AI Suggestions</h3>
-            <p className="text-xs text-slate-500 mt-0.5">{result.diff_patches.length} changes</p>
-          </div>
-          <div className="flex gap-2">
-            <button
-              onClick={rejectAISuggestion}
-              className="px-3 py-1.5 text-xs rounded-lg border border-slate-200 text-slate-600 hover:bg-slate-50 transition-colors"
-            >
-              Reject all
-            </button>
-            <button
-              onClick={acceptAISuggestion}
-              className="px-3 py-1.5 text-xs rounded-lg bg-violet-600 text-white hover:bg-violet-700 transition-colors"
-            >
-              Accept all
-            </button>
-          </div>
-        </div>
-
-        {/* Reasoning */}
+        {/* Reasoning card */}
         {ai.reasoning && (
           <motion.div
-            initial={{ opacity: 0, y: 4 }}
+            initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
-            className="p-3 bg-violet-50 border border-violet-100 rounded-lg"
+            className="p-4 bg-gradient-to-br from-violet-50 to-indigo-50 border border-violet-100 rounded-xl"
           >
-            <p className="text-xs text-violet-700 leading-relaxed">{ai.reasoning}</p>
+            <div className="flex items-center gap-2 mb-2">
+              <span className="text-violet-500">✦</span>
+              <span className="text-xs font-semibold text-violet-700 uppercase tracking-wide">AI Reasoning</span>
+            </div>
+            <p className="text-sm text-violet-800 leading-relaxed">{ai.reasoning}</p>
           </motion.div>
         )}
 
-        {/* Diff patches */}
-        <div className="flex flex-col gap-2 overflow-y-auto flex-1">
+        {/* Action buttons */}
+        <div className="flex gap-2">
+          <button
+            onClick={rejectAISuggestion}
+            className="flex-1 h-9 text-xs font-medium rounded-xl border border-slate-200 text-slate-600 hover:bg-slate-50 transition-all"
+          >
+            Reject all
+          </button>
+          <button
+            onClick={acceptAISuggestion}
+            className="flex-1 h-9 text-xs font-medium rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white hover:shadow-md hover:shadow-violet-200 transition-all"
+          >
+            Accept all ({result.diff_patches.length})
+          </button>
+        </div>
+
+        {/* Patches */}
+        <div className="space-y-2">
+          <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+            Changes · {result.diff_patches.length}
+          </p>
           {result.diff_patches.map((patch, i) => (
-            <PatchCard key={i} patch={patch} onAccept={() => acceptPatch(patch)} />
+            <PatchCard key={i} patch={patch} index={i} onAccept={() => acceptPatch(patch)} />
           ))}
         </div>
       </motion.div>
@@ -64,34 +73,41 @@ export function DiffPanel() {
   );
 }
 
-function PatchCard({ patch, onAccept }: { patch: DiffPatch; onAccept: () => void }) {
-  const label = patch.path.split(".").pop() ?? patch.path;
+function PatchCard({ patch, index, onAccept }: { patch: DiffPatch; index: number; onAccept: () => void }) {
+  const label = patch.path.split(".").filter(Boolean).pop() ?? patch.path;
 
   return (
     <motion.div
       initial={{ opacity: 0, y: 6 }}
       animate={{ opacity: 1, y: 0 }}
-      className="border border-slate-200 rounded-lg overflow-hidden text-xs"
+      transition={{ delay: index * 0.03 }}
+      className="border border-slate-100 rounded-xl overflow-hidden bg-white shadow-sm"
     >
-      <div className="flex items-center justify-between px-3 py-2 bg-slate-50 border-b border-slate-200">
-        <span className="font-mono text-slate-500 truncate max-w-[200px]">{label}</span>
+      {/* Card header */}
+      <div className="flex items-center justify-between px-3.5 py-2.5 bg-slate-50 border-b border-slate-100">
+        <div className="flex items-center gap-2">
+          <span className={`w-1.5 h-1.5 rounded-full ${patch.type === "added" ? "bg-emerald-400" : "bg-violet-400"}`} />
+          <span className="text-xs font-medium text-slate-500 font-mono">{label}</span>
+        </div>
         <button
           onClick={onAccept}
-          className="text-violet-600 hover:text-violet-800 font-medium ml-2 shrink-0"
+          className="text-xs font-semibold text-violet-600 hover:text-violet-800 transition-colors"
         >
-          Accept
+          Accept →
         </button>
       </div>
-      <div className="p-3 space-y-2">
+
+      {/* Diff content */}
+      <div className="p-3 space-y-2 text-xs">
         {patch.original && (
-          <div className="bg-red-50 border border-red-100 rounded px-2 py-1.5">
-            <span className="text-red-400 mr-1">−</span>
-            <span className="text-red-700 line-through">{patch.original.slice(0, 120)}</span>
+          <div className="bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+            <span className="text-red-400 font-mono mr-1.5">−</span>
+            <span className="text-red-600 line-through">{patch.original.slice(0, 140)}</span>
           </div>
         )}
-        <div className="bg-emerald-50 border border-emerald-100 rounded px-2 py-1.5">
-          <span className="text-emerald-400 mr-1">+</span>
-          <span className="text-emerald-700">{patch.suggested.slice(0, 120)}</span>
+        <div className="bg-emerald-50 border border-emerald-100 rounded-lg px-3 py-2">
+          <span className="text-emerald-400 font-mono mr-1.5">+</span>
+          <span className="text-emerald-700">{patch.suggested.slice(0, 140)}</span>
         </div>
       </div>
     </motion.div>
