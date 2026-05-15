@@ -3,5 +3,6 @@
   "git.detectSubmodules": false,
   "git.openRepositoryInParentFolders": "never",
   "python.defaultInterpreterPath": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe",
-  "python.analysis.extraPaths": ["${workspaceFolder}\\backend"]
+  "python.analysis.extraPaths": ["${workspaceFolder}\\backend"],
+  "pyrefly.pythonInterpreter": "${workspaceFolder}\\backend\\venv\\Scripts\\python.exe"
 }
