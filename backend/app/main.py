@@ -202,7 +202,7 @@ async def drive_save_resume(
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
-    async with httpx.AsyncClient() as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         # Find or create Resumes/ folder
         q = "mimeType='application/vnd.google-apps.folder' and name='Resumes' and trashed=false"
         search = await client.get(
