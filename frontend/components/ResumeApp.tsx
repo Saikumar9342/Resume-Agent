@@ -70,9 +70,9 @@ export function ResumeApp() {
     // Google Docs ignores margin/padding on ul/li and adds its own spacing.
     // Solution: avoid <ul>/<li> entirely — use <p> with "• " prefix for bullets.
     const S = `style="margin:0;padding:0;line-height:1.25;font-size:8.5pt"`;
-    const rule = `<hr style="border:none;border-top:1.5px solid ${acc};margin:2px 0 2px">`;
+    const rule = `<hr style="border:none;border-top:1.5px solid ${acc};margin:-4px 0 5px 0">`;
     const sectionHead = (label: string) =>
-      `<p style="margin:7px 0 0;padding:0;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${acc}">${label}</p>${rule}`;
+      `<p style="margin:8px 0 0;padding:0;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${acc};line-height:1"><b>${label}</b></p>${rule}`;
 
     const bullet = (text: string) =>
       `<p ${S} style="margin:0;padding:0 0 0 10px;line-height:1.25;font-size:8.5pt;text-indent:-10px">&#8226;&nbsp;${text}</p>`;
@@ -240,7 +240,8 @@ ${(c.certifications ?? []).length ? sectionHead("Certifications") + certHtml : "
     }
     setAIError(null);
     await saveBeforeAI();
-    requestAI(rawText, jd || undefined, section);
+    const textToSend = rawText || (resume?.content ? JSON.stringify(resume.content) : "");
+    requestAI(textToSend, jd || undefined, section);
     setRailTab("ai");
   };
 

@@ -62,14 +62,37 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
   }, []);
 
   const handlePrint = () => {
-    window.print();
-  };
+    const printRoot = printRootRef.current;
+    if (!printRoot) return;
 
-  useEffect(() => {
-    const onAfterPrint = () => onClose();
-    window.addEventListener("afterprint", onAfterPrint);
-    return () => window.removeEventListener("afterprint", onAfterPrint);
-  }, [onClose]);
+    const fontUrl = resumeStyle ? GOOGLE_FONT_URLS[resumeStyle.fontFamily] : null;
+    const iframe = document.createElement("iframe");
+    iframe.style.cssText = "position:fixed;top:-9999px;left:-9999px;width:210mm;height:297mm;border:none;";
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentDocument!;
+    doc.open();
+    doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+      ${fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : ""}
+      <style>
+        @page { margin: 12mm 0; size: A4; }
+        html, body { margin: 0; padding: 0; }
+        * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        ul { padding-left: 16px; }
+        li { list-style: disc; }
+      </style>
+    </head><body>${printRoot.innerHTML}</body></html>`);
+    doc.close();
+
+    iframe.onload = () => {
+      iframe.contentWindow!.focus();
+      iframe.contentWindow!.print();
+      setTimeout(() => {
+        document.body.removeChild(iframe);
+        onClose();
+      }, 1000);
+    };
+  };
 
   if (!mounted) return null;
 
@@ -79,20 +102,28 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
       <style>{`
         @media print {
           @page { margin: 0; size: A4; }
-          html, body { margin: 0; padding: 0; height: auto; overflow: visible; }
+          html, body { margin: 0; padding: 0; height: auto !important; overflow: visible !important; }
           body > *:not(#resume-print-root) { display: none !important; }
           #resume-print-root {
             display: block !important;
             position: static !important;
-            width: 100%;
-            overflow: visible;
+            width: 210mm !important;
+            margin: 0 auto !important;
+            overflow: visible !important;
+            height: auto !important;
           }
-          #resume-print-root > * {
-            width: 210mm;
-            margin: 0 auto;
-            overflow: visible;
-            page-break-inside: auto;
+          #resume-print-root * {
+            overflow: visible !important;
+            height: auto !important;
+            max-height: none !important;
           }
+          #resume-print-root > div {
+            padding-top: 12mm !important;
+            padding-bottom: 12mm !important;
+            box-sizing: border-box !important;
+          }
+          ul, li { list-style: disc !important; }
+          ul { padding-left: 16px !important; }
           * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
         @media screen {
@@ -124,6 +155,7 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
           <span className="mono" style={{ fontSize: 12, color: "var(--fg-2)" }}>
             Print preview — <span style={{ color: "var(--fg-0)" }}>{title || "resume"}</span>
             <span style={{ color: "var(--fg-4)", marginLeft: 8 }}>{template}</span>
+            <span style={{ color: "var(--fg-4)", marginLeft: 16, fontSize: 11 }}>tip: check "Background graphics" in print dialog for colors</span>
           </span>
           <div style={{ display: "flex", gap: 8 }}>
             <button
@@ -156,6 +188,7 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
             background: "#fff",
             boxShadow: "0 4px 32px rgba(0,0,0,0.4)",
             borderRadius: 2,
+            overflow: "visible",
           }}>
             <TemplateRenderer resume={resume} template={template} resumeStyle={resumeStyle} />
           </div>
