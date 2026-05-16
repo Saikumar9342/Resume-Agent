@@ -5,6 +5,7 @@ export interface ResumeContact {
   location: string;
   linkedin: string;
   github: string;
+  photo?: string; // base64 data URL
 }
 
 export interface ResumeExperience {

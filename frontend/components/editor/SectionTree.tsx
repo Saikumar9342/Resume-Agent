@@ -74,40 +74,63 @@ function useDriveSave() {
   );
   const [saving, setSaving] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+  const [popupBlocked, setPopupBlocked] = useState(false);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   const connect = async () => {
-    const { url } = await api.getDriveAuthUrl();
-    const popup = window.open(url, "gdrive-auth", "width=500,height=600,left=300,top=100");
-    const handler = (e: MessageEvent) => {
-      if (e.data?.type === "GDRIVE_TOKEN" && e.data.token) {
-        setDriveToken(e.data.token);
-        sessionStorage.setItem("gdrive_token", e.data.token);
-        window.removeEventListener("message", handler);
-        popup?.close();
+    setConnectError(null);
+    setPopupBlocked(false);
+    try {
+      const { url } = await api.getDriveAuthUrl();
+      const popup = window.open(url, "gdrive-auth", "width=520,height=620,left=200,top=80,toolbar=0,menubar=0");
+      if (!popup || popup.closed) {
+        setPopupBlocked(true);
+        return;
       }
-    };
-    window.addEventListener("message", handler);
+      const handler = (e: MessageEvent) => {
+        if (e.data?.type === "GDRIVE_TOKEN" && e.data.token) {
+          setDriveToken(e.data.token);
+          sessionStorage.setItem("gdrive_token", e.data.token);
+          window.removeEventListener("message", handler);
+          popup.close();
+        }
+      };
+      window.addEventListener("message", handler);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setConnectError(msg.includes("GOOGLE_CLIENT_ID") || msg.includes("client_id")
+        ? "Google OAuth not configured. Add GOOGLE_CLIENT_ID & GOOGLE_CLIENT_SECRET to backend .env."
+        : "Failed to open Drive auth. Check backend .env.");
+    }
+  };
+
+  const disconnect = () => {
+    setDriveToken(null);
+    sessionStorage.removeItem("gdrive_token");
+    setStatus("idle");
+    setConnectError(null);
+    setPopupBlocked(false);
   };
 
   const save = async (title: string, content: ResumeContent) => {
     if (!driveToken) { await connect(); return; }
     setSaving(true); setStatus("idle");
     try {
-      // Build a minimal HTML representation of the resume
-      const c = content;
-      const html = buildResumeHtml(c, title);
+      const html = buildResumeHtml(content, title);
       await api.saveToDrive(driveToken, `${title}.html`, html);
       setStatus("success");
       setTimeout(() => setStatus("idle"), 3000);
     } catch {
       setStatus("error");
+      setDriveToken(null);
+      sessionStorage.removeItem("gdrive_token");
       setTimeout(() => setStatus("idle"), 3000);
     } finally {
       setSaving(false);
     }
   };
 
-  return { driveToken, saving, status, connect, save };
+  return { driveToken, saving, status, popupBlocked, connectError, connect, disconnect, save };
 }
 
 function buildResumeHtml(c: ResumeContent, title: string): string {
@@ -223,39 +246,66 @@ export function SectionTree({
           display: "flex", flexDirection: "column", maxHeight: "60vh",
         }}>
           {/* Drive save row */}
-          <div style={{
-            padding: "8px 10px", borderBottom: "1px solid var(--line)",
-            display: "flex", alignItems: "center", gap: 8,
-          }}>
-            <Icon name="download" size={11} style={{ color: "var(--fg-3)", flexShrink: 0 }} />
-            <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", flex: 1 }}>
-              {drive.driveToken ? "Connected to Drive" : "Save to Google Drive"}
-            </span>
-            <button
-              onClick={async () => {
-                if (!drive.driveToken) { await drive.connect(); return; }
-                if (resume && resumeTitle) await drive.save(resumeTitle, resume);
-              }}
-              disabled={drive.saving || (!drive.driveToken && false)}
-              className="btn mono"
-              style={{
-                height: 24, fontSize: 10.5, padding: "0 9px", flexShrink: 0,
-                background: drive.status === "success" ? "color-mix(in oklch, var(--green) 12%, var(--bg-2))"
-                  : drive.status === "error" ? "color-mix(in oklch, var(--red) 12%, var(--bg-2))"
-                  : drive.driveToken ? "var(--bg-2)" : "color-mix(in oklch, #4285f4 10%, var(--bg-2))",
-                color: drive.status === "success" ? "var(--green)"
-                  : drive.status === "error" ? "var(--red)"
-                  : drive.driveToken ? "var(--fg-1)" : "#4285f4",
-                border: `1px solid ${drive.driveToken ? "var(--line)" : "#4285f4"}`,
-                borderRadius: 5,
-              }}
-            >
-              {drive.saving ? "saving…"
-                : drive.status === "success" ? "✓ saved!"
-                : drive.status === "error" ? "error"
-                : drive.driveToken ? "save now"
-                : "connect"}
-            </button>
+          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              {/* Google Drive logo mark */}
+              <svg width="13" height="11" viewBox="0 0 87 78" style={{ flexShrink: 0 }}>
+                <path d="M6.1 66.5l4.5 7.8c.9 1.6 2.3 2.8 3.8 3.6L28.9 52H0c0 1.8.5 3.6 1.4 5.2l4.7 9.3z" fill="#0066DA"/>
+                <path d="M43.5 25L28.9 0c-1.5.8-2.9 2-3.8 3.6L1.4 46.8c-.9 1.6-1.4 3.4-1.4 5.2h28.9L43.5 25z" fill="#00AC47"/>
+                <path d="M72.6 78c1.5-.8 2.9-2 3.8-3.6l1.8-3.1 8.6-14.9c.9-1.6 1.4-3.4 1.4-5.2H59.1L72.6 78z" fill="#EA4335"/>
+                <path d="M43.5 25L58.1 0H14.2C12.1 0 10.1.5 8.4 1.4L43.5 25z" fill="#00832D"/>
+                <path d="M59.1 52H87L72.6 26.2 43.5 25 28.9 52h30.2z" fill="#2684FC"/>
+                <path d="M43.5 25L8.4 1.4C6.7 2.3 5.3 3.6 4.4 5.2L43.5 25zM87 52H59.1L72.6 78c1.5-.8 2.9-2 3.8-3.6L87 52z" fill="#FFBA00"/>
+              </svg>
+              <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", flex: 1 }}>
+                {drive.driveToken ? "Drive connected" : "Google Drive"}
+              </span>
+              {drive.driveToken && (
+                <button
+                  onClick={drive.disconnect}
+                  className="mono"
+                  title="Disconnect"
+                  style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: 0, cursor: "pointer", padding: "0 2px", flexShrink: 0 }}
+                >✕</button>
+              )}
+              <button
+                onClick={async () => {
+                  if (!drive.driveToken) { await drive.connect(); return; }
+                  if (resume && resumeTitle) await drive.save(resumeTitle, resume);
+                }}
+                disabled={drive.saving}
+                className="btn mono"
+                style={{
+                  height: 24, fontSize: 10.5, padding: "0 9px", flexShrink: 0,
+                  background: drive.status === "success" ? "color-mix(in oklch, var(--green) 12%, var(--bg-2))"
+                    : drive.status === "error" ? "color-mix(in oklch, var(--red) 12%, var(--bg-2))"
+                    : drive.driveToken ? "var(--bg-2)" : "color-mix(in oklch, #4285f4 10%, var(--bg-2))",
+                  color: drive.status === "success" ? "var(--green)"
+                    : drive.status === "error" ? "var(--red)"
+                    : drive.driveToken ? "var(--fg-1)" : "#4285f4",
+                  border: `1px solid ${drive.driveToken ? "var(--line)" : "#4285f4"}`,
+                  borderRadius: 5,
+                }}
+              >
+                {drive.saving ? "saving…"
+                  : drive.status === "success" ? "✓ saved!"
+                  : drive.status === "error" ? "retry"
+                  : drive.driveToken ? "save now"
+                  : "connect"}
+              </button>
+            </div>
+
+            {/* Error / popup blocked messages */}
+            {drive.connectError && (
+              <div className="mono" style={{ fontSize: 10, color: "var(--red)", marginTop: 6, lineHeight: 1.5 }}>
+                {drive.connectError}
+              </div>
+            )}
+            {drive.popupBlocked && (
+              <div className="mono" style={{ fontSize: 10, color: "var(--amber)", marginTop: 6, lineHeight: 1.5 }}>
+                Popup was blocked. Allow popups for this site and click connect again.
+              </div>
+            )}
           </div>
 
           {/* Resume list */}

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, WebSocket, Query, UploadFile, File, Depends
+from fastapi import FastAPI, WebSocket, Query, UploadFile, File, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from typing import Optional
@@ -145,7 +145,9 @@ async def drive_auth_url(
     """Return a Google OAuth2 URL the frontend should redirect/popup to."""
     import os
     from urllib.parse import urlencode
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    if not client_id:
+        raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID not configured. Add it to backend .env.")
     redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/drive/callback")
     params = {
         "client_id": client_id,

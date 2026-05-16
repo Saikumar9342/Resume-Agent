@@ -532,6 +532,55 @@ function StreamingText({ text }: { text: string }) {
   );
 }
 
+function PhotoUpload({ photo, onPhoto }: { photo?: string; onPhoto: (dataUrl: string) => void }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [hover, setHover] = useState(false);
+
+  const handleFile = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = e => { if (e.target?.result) onPhoto(e.target.result as string); };
+    reader.readAsDataURL(file);
+  };
+
+  return (
+    <div
+      onClick={() => inputRef.current?.click()}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onDragOver={e => { e.preventDefault(); setHover(true); }}
+      onDragLeave={() => setHover(false)}
+      onDrop={e => { e.preventDefault(); setHover(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+      title={photo ? "Click to change photo" : "Click or drag to add photo"}
+      style={{
+        width: 72, height: 72, borderRadius: 8, flexShrink: 0,
+        border: `2px ${hover || !photo ? "dashed" : "solid"} ${hover ? "var(--accent)" : "var(--line)"}`,
+        background: photo ? "transparent" : "var(--bg-2)",
+        cursor: "pointer", overflow: "hidden",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        position: "relative", transition: "border-color 0.15s",
+      }}
+    >
+      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+      {photo ? (
+        <>
+          <img src={photo} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+          {hover && (
+            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Icon name="edit" size={16} style={{ color: "#fff" }} />
+            </div>
+          )}
+        </>
+      ) : (
+        <div style={{ textAlign: "center", pointerEvents: "none" }}>
+          <Icon name="user" size={18} style={{ color: hover ? "var(--accent)" : "var(--fg-4)", display: "block", margin: "0 auto 4px" }} />
+          <span className="mono" style={{ fontSize: 9, color: hover ? "var(--accent)" : "var(--fg-4)" }}>add photo</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionTokens, ats, ghostText, onUpdate, onSectionRewrite, requestGhost, resumeId }: ArticleProps) {
   const isStreaming = aiState === "streaming";
   const missingKw = ats?.missing_keywords ?? [];
@@ -557,25 +606,33 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
     }}>
 
       {/* ── Contact ── */}
-      <header data-sec="contact" style={{ marginBottom: 26, opacity: 1, filter: "none" }}>
-        <EditableText
-          value={resume.contact?.name || ""}
-          placeholder="Your Name"
-          onSave={v => patch(c => ({ ...c, contact: { ...c.contact, name: v } }))}
-          style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.025em", lineHeight: 1.05, display: "block", width: "100%" }}
+      <header data-sec="contact" style={{ marginBottom: 26, opacity: 1, filter: "none", display: "flex", gap: 18, alignItems: "flex-start" }}>
+        {/* Photo upload zone */}
+        <PhotoUpload
+          photo={resume.contact?.photo}
+          onPhoto={dataUrl => patch(c => ({ ...c, contact: { ...c.contact, photo: dataUrl } }))}
         />
-        <div className="mono" style={{ display: "flex", gap: 10, color: "var(--fg-2)", fontSize: 11.5, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
-          {(["email", "phone", "location", "linkedin", "github"] as const).map((field, i) => (
-            <span key={field} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              {i > 0 && <span style={{ color: "var(--fg-4)" }}>·</span>}
-              <EditableText
-                value={resume.contact?.[field] || ""}
-                placeholder={field}
-                onSave={v => patch(c => ({ ...c, contact: { ...c.contact, [field]: v } }))}
-                style={{ fontSize: 11.5 }}
-              />
-            </span>
-          ))}
+
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <EditableText
+            value={resume.contact?.name || ""}
+            placeholder="Your Name"
+            onSave={v => patch(c => ({ ...c, contact: { ...c.contact, name: v } }))}
+            style={{ fontSize: 28, fontWeight: 600, letterSpacing: "-0.025em", lineHeight: 1.05, display: "block", width: "100%" }}
+          />
+          <div className="mono" style={{ display: "flex", gap: 10, color: "var(--fg-2)", fontSize: 11.5, marginTop: 12, flexWrap: "wrap", alignItems: "center" }}>
+            {(["email", "phone", "location", "linkedin", "github"] as const).map((field, i) => (
+              <span key={field} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                {i > 0 && <span style={{ color: "var(--fg-4)" }}>·</span>}
+                <EditableText
+                  value={resume.contact?.[field] || ""}
+                  placeholder={field}
+                  onSave={v => patch(c => ({ ...c, contact: { ...c.contact, [field]: v } }))}
+                  style={{ fontSize: 11.5 }}
+                />
+              </span>
+            ))}
+          </div>
         </div>
       </header>
 
