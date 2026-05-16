@@ -35,7 +35,7 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} ${jetbrainsMono.variable}`}
       style={{ height: "100%", overflow: "hidden" }}
     >
-      <body style={{ height: "100%", overflow: "hidden", margin: 0 }}>
+      <body style={{ height: "100%", overflow: "hidden", margin: 0 }} suppressHydrationWarning>
         <ThemeProvider>{children}</ThemeProvider>
       </body>
     </html>
