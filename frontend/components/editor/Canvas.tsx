@@ -554,7 +554,7 @@ function PhotoUpload({ photo, onPhoto, onRemove }: { photo?: string; onPhoto: (d
         onDrop={e => { e.preventDefault(); setHover(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
         title={photo ? "Click to change photo" : "Click or drag to add photo"}
         style={{
-          width: 76, height: 76, borderRadius: 8,
+          width: 100, height: 100, borderRadius: 10,
           border: `2px ${hover || !photo ? "dashed" : "solid"} ${hover ? "var(--accent)" : "var(--line)"}`,
           background: photo ? "transparent" : "var(--bg-2)",
           cursor: "pointer", overflow: "hidden",
