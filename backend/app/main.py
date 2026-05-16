@@ -143,12 +143,11 @@ async def drive_auth_url(
     _current_user: User = Depends(get_current_user),
 ):
     """Return a Google OAuth2 URL the frontend should redirect/popup to."""
-    import os
     from urllib.parse import urlencode
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "").strip()
+    client_id = settings.google_client_id.strip()
     if not client_id:
         raise HTTPException(status_code=503, detail="GOOGLE_CLIENT_ID not configured. Add it to backend .env.")
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/drive/callback")
+    redirect_uri = settings.google_redirect_uri
     params = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -163,11 +162,11 @@ async def drive_auth_url(
 @app.get("/api/v1/drive/callback")
 async def drive_callback(code: str):
     """Exchange code for tokens — stores in session cookie or returns to frontend."""
-    import os, httpx
+    import httpx
     from fastapi.responses import HTMLResponse
-    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
-    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
-    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/drive/callback")
+    client_id = settings.google_client_id
+    client_secret = settings.google_client_secret
+    redirect_uri = settings.google_redirect_uri
     async with httpx.AsyncClient() as client:
         r = await client.post("https://oauth2.googleapis.com/token", data={
             "code": code,
