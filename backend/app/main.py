@@ -220,13 +220,12 @@ async def drive_save_resume(
             )
             folder_id = create.json()["id"]
 
-        # Upload HTML and ask Drive to convert it to a Google Doc (renderable, exportable as PDF/Word)
-        doc_name = filename.replace(".html", "")
+        # Upload as a styled HTML file (NOT converted to Google Doc — conversion strips all CSS)
         boundary = "------ResumeAgentBoundary"
         meta = _json.dumps({
-            "name": doc_name,
+            "name": filename,  # keep .html extension
             "parents": [folder_id],
-            "mimeType": "application/vnd.google-apps.document",  # convert to Google Doc
+            # No mimeType override — store as-is so styles are preserved
         })
         body = (
             f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
@@ -243,9 +242,9 @@ async def drive_save_resume(
         )
         result = upload.json()
         file_id = result.get("id")
-        # Return a direct link to the Google Doc
-        doc_url = f"https://docs.google.com/document/d/{file_id}/edit" if file_id else None
-        return {"file_id": file_id, "name": result.get("name"), "folder_id": folder_id, "doc_url": doc_url}
+        # Link to preview in Drive (open in browser to print as PDF)
+        preview_url = f"https://drive.google.com/file/d/{file_id}/view" if file_id else None
+        return {"file_id": file_id, "name": result.get("name"), "folder_id": folder_id, "doc_url": preview_url}
 
 
 @app.websocket("/ws/resume/{resume_id}")

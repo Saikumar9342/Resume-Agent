@@ -75,13 +75,25 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
 
   const modal = (
     <>
-      {/* Print-only styles — hides the modal overlay, shows only resume content */}
+      {/* Print-only styles */}
       <style>{`
         @media print {
-          @page { margin: 10mm; size: A4; }
+          @page { margin: 0; size: A4; }
+          html, body { margin: 0; padding: 0; height: auto; overflow: visible; }
           body > *:not(#resume-print-root) { display: none !important; }
-          #resume-print-root { display: block !important; position: static !important; }
-          * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          #resume-print-root {
+            display: block !important;
+            position: static !important;
+            width: 100%;
+            overflow: visible;
+          }
+          #resume-print-root > * {
+            width: 210mm;
+            margin: 0 auto;
+            overflow: visible;
+            page-break-inside: auto;
+          }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         }
         @media screen {
           #resume-print-root { display: none !important; }

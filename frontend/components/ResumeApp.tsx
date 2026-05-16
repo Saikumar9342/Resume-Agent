@@ -60,12 +60,24 @@ export function ResumeApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [resumeStyle, setResumeStyle] = useState<ResumeStyle>({ ...DEFAULT_STYLE });
 
+  const FONT_URLS: Record<string, string> = {
+    "Inter, sans-serif": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap",
+    "'Roboto', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap",
+    "'Merriweather', Georgia, serif": "https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap",
+    "'Lato', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",
+    "'Source Sans 3', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap",
+    "'Playfair Display', Georgia, serif": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&display=swap",
+  };
+
   const buildDriveHtml = useMemo(() => () => {
     if (!resume?.content) return "";
     const TemplateMap = { minimal: MinimalTemplate, classic: ClassicTemplate, modern: ModernTemplate, executive: ExecutiveTemplate, compact: CompactTemplate, creative: CreativeTemplate };
     const Tmpl = TemplateMap[template];
     const body = renderToStaticMarkup(<Tmpl resume={resume.content} resumeStyle={resumeStyle} />);
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${resume.title ?? "resume"}</title><style>*{box-sizing:border-box}body{margin:0;padding:0}</style></head><body>${body}</body></html>`;
+    const fontUrl = FONT_URLS[resumeStyle.fontFamily] ?? "";
+    const fontLink = fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "";
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${resume.title ?? "resume"}</title>${fontLink}<style>*{box-sizing:border-box}html,body{margin:0;padding:0}@media print{@page{margin:0;size:A4}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${body}</body></html>`;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, template, resumeStyle]);
 
   // Persist last resumeId across reloads
@@ -308,19 +320,7 @@ export function ResumeApp() {
   };
 
   const handleExport = () => {
-    if (resume?.content) { setShowTemplatePicker(true); return; }
-    // fallback: download HTML from backend
-    if (!resumeId) return;
-    const { token } = useAuthStore.getState();
-    fetch(
-      `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/export`,
-      { headers: { Authorization: `Bearer ${token}` } }
-    ).then(r => r.blob()).then(blob => {
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = `${resume?.title ?? "resume"}.html`; a.click();
-      URL.revokeObjectURL(url);
-    }).catch(e => console.error("Export failed", e));
+    if (resume?.content) { setPrinting(true); return; }
   };
 
   const handleShare = async () => {
