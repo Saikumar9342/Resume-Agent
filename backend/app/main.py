@@ -220,14 +220,18 @@ async def drive_save_resume(
             )
             folder_id = create.json()["id"]
 
-        # Upload the file using multipart
-        import io
+        # Upload HTML and ask Drive to convert it to a Google Doc (renderable, exportable as PDF/Word)
+        doc_name = filename.replace(".html", "")
         boundary = "------ResumeAgentBoundary"
-        meta = _json.dumps({"name": filename, "parents": [folder_id]})
+        meta = _json.dumps({
+            "name": doc_name,
+            "parents": [folder_id],
+            "mimeType": "application/vnd.google-apps.document",  # convert to Google Doc
+        })
         body = (
             f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
             f"{meta}\r\n"
-            f"--{boundary}\r\nContent-Type: text/html\r\n\r\n"
+            f"--{boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
             f"{html_content}\r\n"
             f"--{boundary}--"
         ).encode()
@@ -238,7 +242,10 @@ async def drive_save_resume(
             content=body,
         )
         result = upload.json()
-        return {"file_id": result.get("id"), "name": result.get("name"), "folder_id": folder_id}
+        file_id = result.get("id")
+        # Return a direct link to the Google Doc
+        doc_url = f"https://docs.google.com/document/d/{file_id}/edit" if file_id else None
+        return {"file_id": file_id, "name": result.get("name"), "folder_id": folder_id, "doc_url": doc_url}
 
 
 @app.websocket("/ws/resume/{resume_id}")

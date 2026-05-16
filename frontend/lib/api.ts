@@ -75,7 +75,7 @@ export const api = {
   getDriveAuthUrl: () => request<{ url: string }>("/api/v1/drive/auth-url"),
 
   saveToDrive: (access_token: string, filename: string, html: string) =>
-    request<{ file_id: string; name: string }>("/api/v1/drive/save", {
+    request<{ file_id: string; name: string; doc_url?: string }>("/api/v1/drive/save", {
       method: "POST",
       body: JSON.stringify({ access_token, filename, html }),
     }),

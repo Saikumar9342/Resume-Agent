@@ -117,9 +117,11 @@ function useDriveSave() {
     setSaving(true); setStatus("idle");
     try {
       const html = buildResumeHtml(content, title);
-      await api.saveToDrive(driveToken, `${title}.html`, html);
+      const result = await api.saveToDrive(driveToken, `${title}.html`, html);
       setStatus("success");
-      setTimeout(() => setStatus("idle"), 3000);
+      // Open the Google Doc in a new tab
+      if (result.doc_url) window.open(result.doc_url, "_blank");
+      setTimeout(() => setStatus("idle"), 4000);
     } catch {
       setStatus("error");
       setDriveToken(null);
