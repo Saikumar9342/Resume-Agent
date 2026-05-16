@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useMemo } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { useResumeStore } from "@/store/resumeStore";
 import { useResumeWebSocket } from "@/hooks/useWebSocket";
 import { useAutosave } from "@/hooks/useAutosave";
@@ -19,7 +20,7 @@ import type { VersionEntry } from "@/components/editor/RightRail";
 import { StatusBar } from "@/components/editor/StatusBar";
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { PrintPreview } from "@/components/editor/PrintPreview";
-import { TemplatePicker } from "@/components/editor/TemplatePicker";
+import { TemplatePicker, MinimalTemplate, ClassicTemplate, ModernTemplate, ExecutiveTemplate, CompactTemplate, CreativeTemplate } from "@/components/editor/TemplatePicker";
 import type { TemplateId } from "@/components/editor/TemplatePicker";
 import { ShortcutOverlay } from "@/components/editor/ShortcutOverlay";
 import { VersionDiffViewer } from "@/components/editor/VersionDiffViewer";
@@ -58,6 +59,14 @@ export function ResumeApp() {
   const [showVersionDiff, setShowVersionDiff] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [resumeStyle, setResumeStyle] = useState<ResumeStyle>({ ...DEFAULT_STYLE });
+
+  const buildDriveHtml = useMemo(() => () => {
+    if (!resume?.content) return "";
+    const TemplateMap = { minimal: MinimalTemplate, classic: ClassicTemplate, modern: ModernTemplate, executive: ExecutiveTemplate, compact: CompactTemplate, creative: CreativeTemplate };
+    const Tmpl = TemplateMap[template];
+    const body = renderToStaticMarkup(<Tmpl resume={resume.content} resumeStyle={resumeStyle} />);
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${resume.title ?? "resume"}</title><style>*{box-sizing:border-box}body{margin:0;padding:0}</style></head><body>${body}</body></html>`;
+  }, [resume, template, resumeStyle]);
 
   // Persist last resumeId across reloads
   useEffect(() => {
@@ -495,6 +504,7 @@ export function ResumeApp() {
             setScreen("editor");
           }}
           resumeTitle={resume?.title}
+          buildDriveHtml={buildDriveHtml}
         />
 
         {!resumeId ? (

@@ -16,6 +16,7 @@ interface SectionTreeProps {
   onSwitchResume: (resume: Resume) => void;
   onNewResume: () => void;
   resumeTitle?: string;
+  buildDriveHtml?: () => string; // renders current template+style to HTML
 }
 
 const SECTION_META: Array<{ id: SectionId; label: string; icon: string }> = [
@@ -112,14 +113,12 @@ function useDriveSave() {
     setPopupBlocked(false);
   };
 
-  const save = async (title: string, content: ResumeContent) => {
+  const saveHtml = async (title: string, html: string) => {
     if (!driveToken) { await connect(); return; }
     setSaving(true); setStatus("idle");
     try {
-      const html = buildResumeHtml(content, title);
       const result = await api.saveToDrive(driveToken, `${title}.html`, html);
       setStatus("success");
-      // Open the Google Doc in a new tab
       if (result.doc_url) window.open(result.doc_url, "_blank");
       setTimeout(() => setStatus("idle"), 4000);
     } catch {
@@ -132,7 +131,10 @@ function useDriveSave() {
     }
   };
 
-  return { driveToken, saving, status, popupBlocked, connectError, connect, disconnect, save };
+  const save = async (title: string, content: ResumeContent) =>
+    saveHtml(title, buildResumeHtml(content, title));
+
+  return { driveToken, saving, status, popupBlocked, connectError, connect, disconnect, save, saveHtml };
 }
 
 function buildResumeHtml(c: ResumeContent, title: string): string {
@@ -165,7 +167,7 @@ ${(c.certifications ?? []).length ? `<h2>Certifications</h2><ul>${(c.certificati
 /* ── Main component ── */
 export function SectionTree({
   resume, active, onSelect, heatmap,
-  currentResumeId, onSwitchResume, onNewResume, resumeTitle,
+  currentResumeId, onSwitchResume, onNewResume, resumeTitle, buildDriveHtml,
 }: SectionTreeProps) {
   const [showSwitcher, setShowSwitcher] = useState(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
@@ -273,7 +275,10 @@ export function SectionTree({
               <button
                 onClick={async () => {
                   if (!drive.driveToken) { await drive.connect(); return; }
-                  if (resume && resumeTitle) await drive.save(resumeTitle, resume);
+                  if (resumeTitle) {
+                    const html = buildDriveHtml ? buildDriveHtml() : (resume ? buildResumeHtml(resume, resumeTitle) : "");
+                    if (html) await drive.saveHtml(resumeTitle, html);
+                  }
                 }}
                 disabled={drive.saving}
                 className="btn mono"
