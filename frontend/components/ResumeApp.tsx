@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState, useMemo } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { useResumeStore } from "@/store/resumeStore";
 import { useResumeWebSocket } from "@/hooks/useWebSocket";
 import { useAutosave } from "@/hooks/useAutosave";
@@ -20,7 +19,7 @@ import type { VersionEntry } from "@/components/editor/RightRail";
 import { StatusBar } from "@/components/editor/StatusBar";
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { PrintPreview } from "@/components/editor/PrintPreview";
-import { TemplatePicker, MinimalTemplate, ClassicTemplate, ModernTemplate, ExecutiveTemplate, CompactTemplate, CreativeTemplate } from "@/components/editor/TemplatePicker";
+import { TemplatePicker } from "@/components/editor/TemplatePicker";
 import type { TemplateId } from "@/components/editor/TemplatePicker";
 import { ShortcutOverlay } from "@/components/editor/ShortcutOverlay";
 import { VersionDiffViewer } from "@/components/editor/VersionDiffViewer";
@@ -60,25 +59,63 @@ export function ResumeApp() {
   const [showOnboarding, setShowOnboarding] = useState(false);
   const [resumeStyle, setResumeStyle] = useState<ResumeStyle>({ ...DEFAULT_STYLE });
 
-  const FONT_URLS: Record<string, string> = {
-    "Inter, sans-serif": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap",
-    "'Roboto', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap",
-    "'Merriweather', Georgia, serif": "https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap",
-    "'Lato', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",
-    "'Source Sans 3', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap",
-    "'Playfair Display', Georgia, serif": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&display=swap",
-  };
-
   const buildDriveHtml = useMemo(() => () => {
     if (!resume?.content) return "";
-    const TemplateMap = { minimal: MinimalTemplate, classic: ClassicTemplate, modern: ModernTemplate, executive: ExecutiveTemplate, compact: CompactTemplate, creative: CreativeTemplate };
-    const Tmpl = TemplateMap[template];
-    const body = renderToStaticMarkup(<Tmpl resume={resume.content} resumeStyle={resumeStyle} />);
-    const fontUrl = FONT_URLS[resumeStyle.fontFamily] ?? "";
-    const fontLink = fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "";
-    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${resume.title ?? "resume"}</title>${fontLink}<style>*{box-sizing:border-box}html,body{margin:0;padding:0}@media print{@page{margin:0;size:A4}body{-webkit-print-color-adjust:exact;print-color-adjust:exact}}</style></head><body>${body}</body></html>`;
+    const c = resume.content;
+    const acc = resumeStyle.accentColor;
+    const esc = (s: string) => (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    const contact = c.contact ?? {} as typeof c.contact;
+    const contactLine = [contact.email, contact.phone, contact.location, contact.linkedin, contact.github].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ");
+
+    const sectionHead = (label: string) =>
+      `<h2 style="font-size:11pt;text-transform:uppercase;letter-spacing:1px;color:${acc};border-bottom:1.5px solid ${acc};padding-bottom:3px;margin:16px 0 8px">${label}</h2>`;
+
+    const expHtml = (c.experience ?? []).map(e => `
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between">
+          <strong style="font-size:11pt">${esc(e.company)}</strong>
+          <span style="font-size:9pt;color:#555">${esc(e.start)} – ${esc(e.end || "Present")}</span>
+        </div>
+        <div style="font-style:italic;color:#444;font-size:10pt;margin-bottom:4px">${esc(e.title)}</div>
+        <ul style="margin:0;padding-left:18px">${(e.bullets ?? []).map(b => `<li style="font-size:10pt;margin-bottom:2px">${esc(b)}</li>`).join("")}</ul>
+      </div>`).join("");
+
+    const eduHtml = (c.education ?? []).map(e => `
+      <div style="margin-bottom:8px;display:flex;justify-content:space-between">
+        <div><strong style="font-size:11pt">${esc(e.institution)}</strong>
+        <div style="font-size:10pt;color:#444">${esc(e.degree)}${e.field ? " in " + esc(e.field) : ""}</div></div>
+        <span style="font-size:9pt;color:#555">${esc(e.year ?? "")}</span>
+      </div>`).join("");
+
+    const skills = [...(c.skills?.technical ?? []), ...(c.skills?.soft ?? [])].map(esc).join(" &nbsp;·&nbsp; ");
+
+    const projHtml = (c.projects ?? []).map(p => `
+      <div style="margin-bottom:8px">
+        <strong style="font-size:11pt">${esc(p.name)}</strong>
+        ${p.technologies?.length ? `<span style="font-size:9pt;color:#777"> · ${p.technologies.map(esc).join(", ")}</span>` : ""}
+        ${p.description ? `<div style="font-size:10pt;color:#333;margin-top:2px">${esc(p.description)}</div>` : ""}
+      </div>`).join("");
+
+    const certHtml = (c.certifications ?? []).map(cert =>
+      `<li style="font-size:10pt">${esc(typeof cert === "string" ? cert : (cert as {name?:string}).name ?? "")}</li>`).join("");
+
+    return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(resume.title ?? "resume")}</title>
+<style>
+  body { font-family: Arial, sans-serif; max-width: 750px; margin: 32px auto; padding: 0 32px; color: #111; line-height: 1.5; }
+  h1 { font-size: 22pt; margin: 0 0 4px; }
+  .contact { font-size: 9.5pt; color: #555; margin-bottom: 4px; }
+</style></head><body>
+<h1 style="color:#111">${esc(contact.name ?? "")}</h1>
+<div class="contact">${contactLine}</div>
+${c.summary ? sectionHead("Professional Summary") + `<p style="font-size:10pt;margin:0 0 4px">${esc(c.summary)}</p>` : ""}
+${(c.experience ?? []).length ? sectionHead("Professional Experience") + expHtml : ""}
+${(c.education ?? []).length ? sectionHead("Education") + eduHtml : ""}
+${skills ? sectionHead("Skills") + `<p style="font-size:10pt;margin:0">${skills}</p>` : ""}
+${(c.projects ?? []).length ? sectionHead("Projects") + projHtml : ""}
+${(c.certifications ?? []).length ? sectionHead("Certifications") + `<ul style="margin:0;padding-left:18px">${certHtml}</ul>` : ""}
+</body></html>`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, template, resumeStyle]);
+  }, [resume, resumeStyle]);
 
   // Persist last resumeId across reloads
   useEffect(() => {

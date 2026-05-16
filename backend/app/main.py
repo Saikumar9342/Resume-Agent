@@ -220,12 +220,13 @@ async def drive_save_resume(
             )
             folder_id = create.json()["id"]
 
-        # Upload as a styled HTML file (NOT converted to Google Doc — conversion strips all CSS)
+        # Upload HTML and convert to Google Doc (readable in Drive, exportable as PDF/Word)
+        doc_name = filename.replace(".html", "")
         boundary = "------ResumeAgentBoundary"
         meta = _json.dumps({
-            "name": filename,  # keep .html extension
+            "name": doc_name,
             "parents": [folder_id],
-            # No mimeType override — store as-is so styles are preserved
+            "mimeType": "application/vnd.google-apps.document",
         })
         body = (
             f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
