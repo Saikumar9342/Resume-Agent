@@ -67,53 +67,51 @@ export function ResumeApp() {
     const contact = c.contact ?? {} as typeof c.contact;
     const contactLine = [contact.email, contact.phone, contact.location, contact.linkedin, contact.github].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ");
 
-    // Google Docs only reliably renders: inline styles, <b>, <i>, <ul>, <li>, <hr>, <br>
-    // No float, no flexbox, no grid, no overflow. Use HR for rules, inline span for dates.
-    const rule = `<hr style="border:none;border-top:1.5px solid ${acc};margin:1px 0 3px">`;
+    // Google Docs ignores margin/padding on ul/li and adds its own spacing.
+    // Solution: avoid <ul>/<li> entirely — use <p> with "• " prefix for bullets.
+    const S = `style="margin:0;padding:0;line-height:1.25;font-size:8.5pt"`;
+    const rule = `<hr style="border:none;border-top:1.5px solid ${acc};margin:2px 0 2px">`;
     const sectionHead = (label: string) =>
-      `<p style="margin:8px 0 0;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${acc}">${label}</p>${rule}`;
+      `<p style="margin:7px 0 0;padding:0;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${acc}">${label}</p>${rule}`;
 
-    const expHtml = (c.experience ?? []).map(e => `
-<p style="margin:4px 0 0;font-size:9.5pt">
-  <b>${esc(e.company)}</b><span style="color:#555;font-size:8pt"> &nbsp;&nbsp; ${esc(e.start)} – ${esc(e.end || "Present")}</span>
-</p>
-<p style="margin:0 0 1px;font-size:8.5pt;font-style:italic;color:#555">${esc(e.title)}</p>
-<ul style="margin:1px 0 4px;padding-left:14px">${(e.bullets ?? []).map(b =>
-  `<li style="font-size:8.5pt;line-height:1.3;color:#222">${esc(b)}</li>`).join("")}</ul>`).join("");
+    const bullet = (text: string) =>
+      `<p ${S} style="margin:0;padding:0 0 0 10px;line-height:1.25;font-size:8.5pt;text-indent:-10px">&#8226;&nbsp;${text}</p>`;
 
-    const eduHtml = (c.education ?? []).map(e => `
-<p style="margin:4px 0 0;font-size:9.5pt">
-  <b>${esc(e.institution)}</b><span style="color:#555;font-size:8pt"> &nbsp;&nbsp; ${esc(e.year ?? "")}</span>
-</p>
-<p style="margin:0 0 4px;font-size:8.5pt;color:#555">${esc(e.degree)}${e.field ? " in " + esc(e.field) : ""}</p>`).join("");
+    const expHtml = (c.experience ?? []).map(e => [
+      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(e.company)}</b><span style="color:#666;font-size:8pt"> &nbsp;${esc(e.start)} – ${esc(e.end || "Present")}</span></p>`,
+      `<p style="margin:0;padding:0;font-size:8.5pt;font-style:italic;color:#555;line-height:1.2">${esc(e.title)}</p>`,
+      ...(e.bullets ?? []).map(b => bullet(esc(b))),
+    ].join("")).join("");
+
+    const eduHtml = (c.education ?? []).map(e => [
+      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(e.institution)}</b><span style="color:#666;font-size:8pt"> &nbsp;${esc(e.year ?? "")}</span></p>`,
+      `<p style="margin:0;padding:0;font-size:8.5pt;color:#555;line-height:1.2">${esc(e.degree)}${e.field ? " in " + esc(e.field) : ""}</p>`,
+    ].join("")).join("");
 
     const skills = [...(c.skills?.technical ?? []), ...(c.skills?.soft ?? [])].map(esc).join(" · ");
 
-    const projHtml = (c.projects ?? []).map(p => `
-<p style="margin:4px 0 0;font-size:9.5pt">
-  <b>${esc(p.name)}</b>${p.technologies?.length ? `<span style="font-size:8pt;color:#777"> · ${p.technologies.map(esc).join(", ")}</span>` : ""}
-</p>
-${p.description ? `<p style="margin:0 0 3px;font-size:8.5pt;color:#333;line-height:1.3">${esc(p.description)}</p>` : ""}`).join("");
+    const projHtml = (c.projects ?? []).map(p => [
+      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(p.name)}</b>${p.technologies?.length ? `<span style="font-size:8pt;color:#777"> · ${p.technologies.map(esc).join(", ")}</span>` : ""}</p>`,
+      p.description ? `<p style="margin:0;padding:0;font-size:8.5pt;color:#333;line-height:1.2">${esc(p.description)}</p>` : "",
+    ].join("")).join("");
 
     const certHtml = (c.certifications ?? []).map(cert =>
-      `<li style="font-size:8.5pt">${esc(typeof cert === "string" ? cert : (cert as {name?:string}).name ?? "")}</li>`).join("");
+      bullet(esc(typeof cert === "string" ? cert : (cert as {name?:string}).name ?? ""))).join("");
 
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(resume.title ?? "resume")}</title>
 <style>
-  @page { size: A4; margin: 14mm 16mm 14mm 16mm; }
-  body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; line-height: 1.3; margin: 0; padding: 0; }
+  @page { size: A4; margin: 13mm 15mm 13mm 15mm; }
+  body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; line-height: 1.25; margin: 0; padding: 0; }
   p { margin: 0; padding: 0; }
-  ul { margin: 0; }
-  li { line-height: 1.3; }
 </style></head><body>
-<p style="font-size:18pt;font-weight:700;margin:0 0 2px"><b>${esc(contact.name ?? "")}</b></p>
-<p style="font-size:8pt;color:#555;margin-bottom:4px">${contactLine}</p>
-${c.summary ? sectionHead("Professional Summary") + `<p style="font-size:8.5pt;line-height:1.35">${esc(c.summary)}</p>` : ""}
+<p style="font-size:17pt;font-weight:700;margin:0;padding:0"><b>${esc(contact.name ?? "")}</b></p>
+<p style="font-size:8pt;color:#555;margin:1px 0 3px;padding:0">${contactLine}</p>
+${c.summary ? sectionHead("Professional Summary") + `<p style="margin:0;padding:0;font-size:8.5pt;line-height:1.3">${esc(c.summary)}</p>` : ""}
 ${(c.experience ?? []).length ? sectionHead("Professional Experience") + expHtml : ""}
 ${(c.education ?? []).length ? sectionHead("Education") + eduHtml : ""}
-${skills ? sectionHead("Skills") + `<p style="font-size:8.5pt;line-height:1.5;margin-bottom:2px">${skills}</p>` : ""}
+${skills ? sectionHead("Skills") + `<p style="margin:0;padding:0;font-size:8.5pt;line-height:1.4">${skills}</p>` : ""}
 ${(c.projects ?? []).length ? sectionHead("Projects") + projHtml : ""}
-${(c.certifications ?? []).length ? sectionHead("Certifications") + `<ul style="padding-left:14px;margin:2px 0">${certHtml}</ul>` : ""}
+${(c.certifications ?? []).length ? sectionHead("Certifications") + certHtml : ""}
 </body></html>`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resume, resumeStyle]);
