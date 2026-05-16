@@ -4,7 +4,10 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import type { ResumeContent } from "@/types/resume";
 import type { TemplateId } from "./TemplatePicker";
-import { MinimalTemplate, ClassicTemplate, ModernTemplate } from "./TemplatePicker";
+import {
+  MinimalTemplate, ClassicTemplate, ModernTemplate,
+  ExecutiveTemplate, CompactTemplate, CreativeTemplate,
+} from "./TemplatePicker";
 
 interface PrintPreviewProps {
   resume: ResumeContent;
@@ -22,6 +25,9 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
     document.body.appendChild(el);
     setContainer(el);
 
+    const prevTitle = document.title;
+    document.title = title || "resume";
+
     const onAfterPrint = () => onClose();
     window.addEventListener("afterprint", onAfterPrint);
     const t = setTimeout(() => window.print(), 150);
@@ -30,6 +36,7 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
       clearTimeout(t);
       window.removeEventListener("afterprint", onAfterPrint);
       if (document.body.contains(el)) document.body.removeChild(el);
+      document.title = prevTitle;
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -47,6 +54,9 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
       {template === "minimal" && <MinimalTemplate resume={resume} />}
       {template === "classic" && <ClassicTemplate resume={resume} />}
       {template === "modern" && <ModernTemplate resume={resume} />}
+      {template === "executive" && <ExecutiveTemplate resume={resume} />}
+      {template === "compact" && <CompactTemplate resume={resume} />}
+      {template === "creative" && <CreativeTemplate resume={resume} />}
     </>
   );
 

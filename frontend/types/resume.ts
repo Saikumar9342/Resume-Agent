@@ -68,13 +68,32 @@ export interface ATSCheckpoint {
   id: string;
   label: string;
   passed: boolean;
+  weight?: number;
+  detail?: string;
+  category?: "contact" | "completeness" | "bullets" | "structure" | "keywords";
+}
+
+export interface ATSCategoryScore {
+  score: number;
+  max: number;
+  pct: number;
+}
+
+export interface ATSBreakdown {
+  contact: ATSCategoryScore;
+  completeness: ATSCategoryScore;
+  bullets: ATSCategoryScore;
+  structure: ATSCategoryScore;
+  keywords: ATSCategoryScore | null;
 }
 
 export interface ATSAnalysis {
   score: number;
   checkpoints: ATSCheckpoint[];
   missing_keywords: string[];
+  matched_keywords?: string[];
   suggestions: string[];
+  breakdown?: ATSBreakdown;
 }
 
 export interface AIRewriteResult {

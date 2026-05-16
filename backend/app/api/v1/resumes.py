@@ -257,6 +257,12 @@ async def generate_cover_letter(
     job_description = payload.get("job_description", "")
     company = payload.get("company", "the company")
     role = payload.get("role", "this role")
+    tone = payload.get("tone", "professional")
+    tone_directive = {
+        "professional": "Confident and polished. Warm but business-appropriate.",
+        "enthusiastic": "Energetic and passionate. Show genuine excitement for the role.",
+        "concise": "Tight and direct. Three short paragraphs maximum, no fluff.",
+    }.get(tone, "Confident and polished. Warm but business-appropriate.")
 
     content = resume.content or {}
     contact = content.get("contact", {})
@@ -271,7 +277,7 @@ async def generate_cover_letter(
         for e in experience[:3]
     ])
 
-    prompt = f"""Write a professional cover letter for {name} applying for the role of {role} at {company}.
+    prompt = f"""Write a cover letter for {name} applying for the role of {role} at {company}.
 
 Resume summary: {summary}
 
@@ -283,12 +289,14 @@ Top skills: {", ".join(skills[:10])}
 Job description:
 {job_description[:1500]}
 
+Tone: {tone_directive}
+
 Instructions:
 - Write 3–4 paragraphs: opener, relevant experience, why this company/role, closing
-- Professional but not robotic — show personality
 - Reference specific achievements from the resume
-- Do NOT use placeholders like [Your Name] — use the actual name from the resume
-- Return ONLY the cover letter text, no subject line, no headers"""
+- Do NOT use placeholders like [Your Name], [Date], or [Address] — use the actual name from the resume
+- Do NOT include a letterhead, date, or recipient block — only the letter body
+- Return ONLY the cover letter body text"""
 
     from langchain_core.messages import HumanMessage
     text = await llm_invoke([HumanMessage(content=prompt)])

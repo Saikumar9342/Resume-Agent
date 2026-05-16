@@ -2,7 +2,7 @@
 
 import { useRef, useEffect } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
-import type { ATSAnalysis, AIActivity, AIRewriteResult, DiffPatch, ResumeContent } from "@/types/resume";
+import type { ATSAnalysis, ATSCategoryScore, ATSCheckpoint, AIActivity, AIRewriteResult, DiffPatch, ResumeContent } from "@/types/resume";
 import { CoverLetterPane } from "./CoverLetterPane";
 
 type RailTab = "ai" | "ats" | "versions" | "cover";
@@ -474,6 +474,22 @@ function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
         </button>
       </div>
 
+      {/* category breakdown */}
+      {ats.breakdown && (
+        <div style={{ padding: "16px", borderBottom: "1px solid var(--line)" }}>
+          <SectionLabel>score breakdown</SectionLabel>
+          <div style={{ marginTop: 10, display: "grid", gap: 8 }}>
+            <CategoryBar name="Contact" cat={ats.breakdown.contact} />
+            <CategoryBar name="Completeness" cat={ats.breakdown.completeness} />
+            <CategoryBar name="Bullets" cat={ats.breakdown.bullets} />
+            <CategoryBar name="Structure" cat={ats.breakdown.structure} />
+            {ats.breakdown.keywords && (
+              <CategoryBar name="Keywords (JD)" cat={ats.breakdown.keywords} />
+            )}
+          </div>
+        </div>
+      )}
+
       {/* missing keywords */}
       {ats.missing_keywords.length > 0 && (
         <div style={{ padding: "16px", borderBottom: "1px solid var(--line)" }}>
@@ -492,25 +508,8 @@ function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
         </div>
       )}
 
-      {/* checkpoints */}
-      <div style={{ padding: "16px", borderBottom: "1px solid var(--line)" }}>
-        <SectionLabel>checkpoints</SectionLabel>
-        <div style={{ marginTop: 8 }}>
-          {ats.checkpoints.map((cp, i) => (
-            <div key={cp.id} className="mono" style={{
-              display: "flex", alignItems: "center", gap: 10,
-              fontSize: 12, padding: "6px 8px", borderRadius: 4,
-              color: "var(--fg-1)",
-              background: i % 2 === 0 ? "transparent" : "color-mix(in oklch, var(--bg-2) 50%, transparent)",
-            }}>
-              <span style={{ color: cp.passed ? "var(--green)" : "var(--red)", width: 14, display: "inline-flex", justifyContent: "center" }}>
-                {cp.passed ? <Icon name="check" size={11} /> : <Icon name="x" size={11} />}
-              </span>
-              <span style={{ flex: 1 }}>{cp.label}</span>
-            </div>
-          ))}
-        </div>
-      </div>
+      {/* checkpoints grouped by category */}
+      <CheckpointsGrouped checkpoints={ats.checkpoints} />
 
       {/* suggestions */}
       {ats.suggestions.length > 0 && (
@@ -533,6 +532,113 @@ function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+const CATEGORY_COLORS: Record<string, string> = {
+  contact: "var(--blue)",
+  completeness: "var(--amber)",
+  bullets: "var(--accent)",
+  structure: "var(--green)",
+  keywords: "var(--red)",
+};
+
+const CATEGORY_LABELS: Record<string, string> = {
+  contact: "Contact",
+  completeness: "Completeness",
+  bullets: "Bullets",
+  structure: "Structure",
+  keywords: "Keywords",
+};
+
+function CategoryBar({ name, cat }: { name: string; cat: ATSCategoryScore }) {
+  const key = name.toLowerCase().split(" ")[0];
+  const color = CATEGORY_COLORS[key] || "var(--accent)";
+  const pct = Math.max(0, Math.min(100, cat.pct));
+  const tone = pct >= 80 ? "var(--green)" : pct >= 50 ? "var(--amber)" : "var(--red)";
+  return (
+    <div>
+      <div style={{
+        display: "flex", justifyContent: "space-between", alignItems: "baseline",
+        marginBottom: 4, gap: 6,
+      }}>
+        <span className="mono" style={{ fontSize: 11, color: "var(--fg-1)", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ width: 6, height: 6, borderRadius: 99, background: color }} />
+          {name}
+        </span>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>
+          {cat.score}/{cat.max} · <span style={{ color: tone }}>{pct}%</span>
+        </span>
+      </div>
+      <div style={{
+        height: 6, background: "var(--bg-3)", borderRadius: 99, overflow: "hidden",
+      }}>
+        <div style={{
+          width: `${pct}%`, height: "100%",
+          background: tone,
+          transition: "width 600ms ease, background 300ms ease",
+          borderRadius: 99,
+        }} />
+      </div>
+    </div>
+  );
+}
+
+function CheckpointsGrouped({ checkpoints }: { checkpoints: ATSCheckpoint[] }) {
+  const groups: Record<string, ATSCheckpoint[]> = {};
+  for (const cp of checkpoints) {
+    const cat = cp.category || "other";
+    (groups[cat] ||= []).push(cp);
+  }
+  const order = ["contact", "completeness", "bullets", "structure", "keywords"];
+  const orderedKeys = order.filter(k => groups[k]?.length).concat(
+    Object.keys(groups).filter(k => !order.includes(k))
+  );
+
+  return (
+    <div style={{ padding: "16px", borderBottom: "1px solid var(--line)" }}>
+      <SectionLabel>checkpoints</SectionLabel>
+      <div style={{ marginTop: 10, display: "grid", gap: 14 }}>
+        {orderedKeys.map(catKey => {
+          const items = groups[catKey];
+          const passCount = items.filter(c => c.passed).length;
+          const color = CATEGORY_COLORS[catKey] || "var(--fg-2)";
+          return (
+            <div key={catKey}>
+              <div className="mono" style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                fontSize: 10, color: "var(--fg-3)", textTransform: "uppercase",
+                letterSpacing: "0.1em", marginBottom: 6,
+              }}>
+                <span style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <span style={{ width: 6, height: 6, borderRadius: 99, background: color }} />
+                  {CATEGORY_LABELS[catKey] || catKey}
+                </span>
+                <span style={{ color: passCount === items.length ? "var(--green)" : "var(--fg-3)" }}>
+                  {passCount}/{items.length}
+                </span>
+              </div>
+              {items.map((cp, i) => (
+                <div key={cp.id} className="mono" style={{
+                  display: "flex", alignItems: "center", gap: 10,
+                  fontSize: 11.5, padding: "5px 8px", borderRadius: 4,
+                  color: "var(--fg-1)",
+                  background: i % 2 === 0 ? "transparent" : "color-mix(in oklch, var(--bg-2) 50%, transparent)",
+                }}>
+                  <span style={{ color: cp.passed ? "var(--green)" : "var(--red)", width: 14, display: "inline-flex", justifyContent: "center" }}>
+                    {cp.passed ? <Icon name="check" size={11} /> : <Icon name="x" size={11} />}
+                  </span>
+                  <span style={{ flex: 1 }}>{cp.label}</span>
+                  {cp.detail && (
+                    <span style={{ fontSize: 10, color: "var(--fg-4)" }}>{cp.detail}</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
