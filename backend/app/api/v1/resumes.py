@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 import json
@@ -301,6 +301,81 @@ Instructions:
     from langchain_core.messages import HumanMessage
     text = await llm_invoke([HumanMessage(content=prompt)])
     return {"cover_letter": text, "name": name, "company": company, "role": role}
+
+
+@router.post("/resumes/{resume_id}/cover-letter/stream")
+async def stream_cover_letter(
+    resume_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    job_description = payload.get("job_description", "")
+    company = payload.get("company", "the company")
+    role = payload.get("role", "this role")
+    tone = payload.get("tone", "professional")
+    tone_directive = {
+        "professional": "Confident and polished. Warm but business-appropriate.",
+        "enthusiastic": "Energetic and passionate. Show genuine excitement for the role.",
+        "concise": "Tight and direct. Three short paragraphs maximum, no fluff.",
+    }.get(tone, "Confident and polished.")
+
+    content = resume.content or {}
+    contact = content.get("contact", {})
+    name = contact.get("name", "")
+    summary = content.get("summary", "")
+    experience = content.get("experience", [])
+    skills = content.get("skills", {}).get("technical", [])
+    exp_text = "\n".join([
+        f"- {e.get('title')} at {e.get('company')} ({e.get('start')}–{e.get('end')}): " +
+        "; ".join(e.get("bullets", [])[:2])
+        for e in experience[:3]
+    ])
+
+    prompt = f"""Write a cover letter for {name} applying for the role of {role} at {company}.
+
+Resume summary: {summary}
+
+Key experience:
+{exp_text}
+
+Top skills: {", ".join(skills[:10])}
+
+Job description:
+{job_description[:1500]}
+
+Tone: {tone_directive}
+
+Instructions:
+- Write 3–4 paragraphs: opener, relevant experience, why this company/role, closing
+- Reference specific achievements from the resume
+- Do NOT use placeholders like [Your Name] — use the actual name
+- Do NOT include a letterhead, date, or recipient block — only the letter body
+- Return ONLY the cover letter body text"""
+
+    from langchain_core.messages import HumanMessage
+    from app.services.llm import llm_stream
+
+    async def event_stream():
+        try:
+            async for chunk in llm_stream([HumanMessage(content=prompt)]):
+                # SSE format
+                yield f"data: {json.dumps({'token': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream", headers={
+        "Cache-Control": "no-cache",
+        "X-Accel-Buffering": "no",
+    })
 
 
 @router.post("/resumes/{resume_id}/section-chat")

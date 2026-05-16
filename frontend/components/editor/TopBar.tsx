@@ -299,12 +299,13 @@ interface FloatingActionsProps {
   onRunAI: () => void;
   onStopAI?: () => void;
   onExport: () => void;
+  onExportDocx?: () => void;
   onShare?: () => void;
   onHistory: () => void;
   aiState: "idle" | "streaming" | "review" | "accepted";
 }
 
-export function FloatingActions({ onRunAI, onStopAI, onExport, onShare, onHistory, aiState }: FloatingActionsProps) {
+export function FloatingActions({ onRunAI, onStopAI, onExport, onExportDocx, onShare, onHistory, aiState }: FloatingActionsProps) {
   const mod = modKey();
 
   return (
@@ -322,7 +323,8 @@ export function FloatingActions({ onRunAI, onStopAI, onExport, onShare, onHistor
       {onShare && (
         <FloatBtn icon="branch" label="share" onClick={onShare} />
       )}
-      <FloatBtn icon="download" label="export" onClick={onExport} />
+      <FloatBtn icon="download" label="pdf" onClick={onExport} />
+      {onExportDocx && <FloatBtn icon="doc" label=".docx" onClick={onExportDocx} />}
       <FloatBtn icon="clock" label="history" onClick={onHistory} />
 
       <div style={{ width: 1, height: 20, background: "var(--line)", margin: "0 2px" }} />

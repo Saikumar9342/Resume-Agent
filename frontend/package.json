@@ -19,6 +19,7 @@
     "@lexical/selection": "^0.44.0",
     "@lexical/utils": "^0.44.0",
     "dexie": "^4.4.2",
+    "docx": "^9.6.1",
     "framer-motion": "^12.38.0",
     "html2canvas-pro": "^2.0.2",
     "html2pdf.js": "^0.14.0",

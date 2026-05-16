@@ -9,6 +9,8 @@ interface JDBarProps {
   setJD: (v: string) => void;
   resume: ResumeContent | null;
   onAutoAddKeywords?: (keywords: string[]) => void;
+  onTailor?: () => void;
+  tailoring?: boolean;
 }
 
 const STOP = new Set(["and","the","to","of","in","a","for","with","that","is","are","on","as","be","an","or","at","by","we","you","our","your","this","have","will","can","work","role","team","ability","strong","experience","years","using","good","great","must","nice","not","but","also","from","more","their","they","etc","its","new","other","some","key","both","all","each","help","take","make","use","get","set","may","how","when","what","any","who","been","has","had","should","would","could","about","into","than","over","after","then","well","also","just","want","need","like","know"]);
@@ -38,7 +40,7 @@ function fitGrade(pct: number): { label: string; color: string } {
   return { label: "Low Fit", color: "var(--red)" };
 }
 
-export function JDBar({ jd, setJD, resume, onAutoAddKeywords }: JDBarProps) {
+export function JDBar({ jd, setJD, resume, onAutoAddKeywords, onTailor, tailoring }: JDBarProps) {
   const [expanded, setExpanded] = useState(false);
   const [addedKeys, setAddedKeys] = useState<Set<string>>(new Set());
 
@@ -108,6 +110,18 @@ export function JDBar({ jd, setJD, resume, onAutoAddKeywords }: JDBarProps) {
               {missing.length > 0 ? `${missing.length} missing` : `${matched.length} matched`} {expanded ? "▲" : "▼"}
             </button>
           </>
+        )}
+        {jd && onTailor && (
+          <button
+            onClick={onTailor}
+            disabled={tailoring}
+            className="btn btn-accent mono"
+            style={{ height: 26, fontSize: 11, padding: "0 10px", flexShrink: 0 }}
+            title="Rewrite resume to target this specific job description"
+          >
+            <Icon name="sparkle" size={11} />
+            {tailoring ? "tailoring…" : "tailor to JD"}
+          </button>
         )}
         {jd && (
           <button onClick={() => { setJD(""); setExpanded(false); }} className="btn btn-ghost" style={{ width: 22, height: 22, padding: 0, justifyContent: "center" }}>

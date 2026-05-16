@@ -131,10 +131,10 @@ ${fontLink}
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ai.isStreaming, ai.pendingResult]);
 
-  // Auto-run ATS when resume loads and has content
+  // Auto-run ATS when resume loads and has content (silent — no tab switch)
   useEffect(() => {
     if (resumeId && resume?.content && (resume.content.summary || resume.content.experience?.length)) {
-      handleATSAnalyze();
+      handleATSAnalyze(true);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resumeId]);
@@ -222,9 +222,19 @@ ${fontLink}
 
   const handleSectionRewrite = (section: string) => handleAIRewrite(section);
 
-  const handleATSAnalyze = async () => {
+  const handleTailorToJD = async () => {
+    if (!resumeId || !jd || !resume?.content) return;
+    setAIError(null);
+    await saveBeforeAI();
+    const textToSend = JSON.stringify(resume.content);
+    const instruction = `Tailor this resume specifically for the following job description. Rewrite bullets to highlight the most relevant experience, naturally weave in missing keywords, and adjust the summary to match the role. Keep all facts truthful — do not invent metrics or experiences.\n\nJob Description:\n${jd.slice(0, 2000)}`;
+    requestAI(textToSend, jd, undefined, instruction);
+    setRailTab("ai");
+  };
+
+  const handleATSAnalyze = async (silent = false) => {
     if (!resumeId) return;
-    setRailTab("ats");
+    if (!silent) setRailTab("ats");
     try {
       const analysis = await api.analyzeATS(resumeId, jd || undefined);
       setATS(analysis);
@@ -335,6 +345,12 @@ ${fontLink}
     if (resume?.content) { setPrinting(true); return; }
   };
 
+  const handleExportDocx = async () => {
+    if (!resume?.content) return;
+    const { exportDocx } = await import("@/lib/exportDocx");
+    await exportDocx(resume.content, resume.title ?? "resume");
+  };
+
   const handleShare = async () => {
     if (!resumeId) return;
     const { token: authToken } = useAuthStore.getState();
@@ -373,7 +389,8 @@ ${fontLink}
   const handleAcceptAll = () => {
     acceptAISuggestion();
     setAIState("accepted");
-    setTimeout(() => handleATSAnalyze(), 800);
+    // Run ATS silently in background — no tab switch
+    setTimeout(() => handleATSAnalyze(true), 1200);
   };
 
   const handleRejectAll = () => {
@@ -489,6 +506,8 @@ ${fontLink}
         setJD={setJD}
         resume={resume?.content ?? null}
         onAutoAddKeywords={handleAutoAddKeywords}
+        onTailor={jd && resume?.content ? handleTailorToJD : undefined}
+        tailoring={aiState === "streaming"}
       />
 
       {/* 3-pane */}
@@ -738,6 +757,7 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
               onRunAI={() => handleAIRewrite()}
               onStopAI={() => { cancelAI(); setAIState("idle"); }}
               onExport={handleExport}
+              onExportDocx={resume?.content ? handleExportDocx : undefined}
               onShare={resumeId ? handleShare : undefined}
               onHistory={() => setRailTab("versions")}
               aiState={aiState}

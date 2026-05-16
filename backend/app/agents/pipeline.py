@@ -64,6 +64,18 @@ async def _emit(state: AgentState, node: str, message: str):
 
 async def extraction_node(state: AgentState) -> AgentState:
     await _emit(state, "extraction", "Reading your resume and identifying sections...")
+
+    # If raw_text is already structured JSON (canvas edits), use it directly — no LLM needed
+    try:
+        already_structured = json.loads(state["raw_text"])
+        if isinstance(already_structured, dict) and already_structured.get("contact"):
+            tech = already_structured.get("skills", {}).get("technical", [])
+            exp = already_structured.get("experience", [])
+            await _emit(state, "extraction", f"Found {len(tech)} skills and {len(exp)} jobs")
+            return {**state, "structured": already_structured, "active_model": ""}
+    except Exception:
+        pass
+
     await _emit(state, "extraction", "Extracting contact details, experience, and skills...")
 
     prompt = f"""Extract the resume into a structured JSON with exactly these keys:
@@ -180,6 +192,10 @@ Return ONLY valid JSON for this section's value."""
         await _emit(state, "optimization", f"Weaving in missing keywords: {', '.join(missing_kw[:4])}...")
     await _emit(state, "optimization", "Strengthening action verbs and quantifying achievements...")
 
+    # Build resume for prompt — strip custom sections to avoid schema confusion
+    structured_for_prompt = {k: v for k, v in structured.items() if k != "custom"}
+    custom_sections = structured.get("custom", {})
+
     prompt = f"""You are an expert resume writer. Rewrite the resume using the STAR method for all bullets.
 Naturally incorporate missing keywords where truthful: {missing_kw}.
 
@@ -188,15 +204,22 @@ Rules:
 - Use strong action verbs
 - Quantify achievements when the original has numbers
 - Keep bullets concise (1-2 lines max)
+- PRESERVE every contact field exactly (name, email, phone, location, linkedin, github) — copy them verbatim
+- PRESERVE education year, institution, degree, field exactly — copy them verbatim
+- PRESERVE project URLs exactly
 {f"- Additional instructions: {instructions}" if instructions else ""}
 
 Original resume:
-{json.dumps(structured, indent=2)}
+{json.dumps(structured_for_prompt, indent=2)}
 
 Return optimized resume as JSON in the SAME schema. Return ONLY valid JSON."""
 
     text = await llm_invoke([HumanMessage(content=prompt)])
     optimized = _parse_json_block(text)
+
+    # Re-attach custom sections unchanged
+    if custom_sections:
+        optimized["custom"] = custom_sections
 
     await _emit(state, "optimization", "Generating coaching summary...")
     reasoning = await llm_invoke([

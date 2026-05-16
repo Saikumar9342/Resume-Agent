@@ -101,6 +101,41 @@ def _is_transient(e: Exception) -> bool:
     return "503" in s or "timeout" in s or "connection" in s or "unavailable" in s
 
 
+async def llm_stream(messages: list[BaseMessage]):
+    """
+    Stream tokens from the best available LLM. Yields str chunks.
+    Falls back through the chain if a model is unavailable.
+    """
+    last_error = None
+
+    for model_id, factory in _CHAIN:
+        if model_id in _permanently_skip:
+            continue
+        if _is_exhausted(model_id):
+            continue
+
+        llm = factory()
+        if llm is None:
+            continue
+
+        try:
+            logger.info(f"[LLM stream] {model_id}")
+            async for chunk in llm.astream(messages):
+                content = chunk.content if hasattr(chunk, "content") else str(chunk)
+                if content:
+                    yield content
+            return
+        except Exception as e:
+            last_error = e
+            if _is_quota_error(e):
+                _mark_exhausted(model_id)
+            elif _is_not_found(e):
+                _mark_permanent_skip(model_id, "404 not found")
+            logger.warning(f"[LLM stream] {model_id} failed → next: {e}")
+
+    raise RuntimeError(f"All LLM providers failed (stream). Last error: {last_error}")
+
+
 async def llm_invoke(messages: list[BaseMessage], active_model_out: Optional[list] = None) -> str:
     """
     Invoke the best available LLM with automatic fallback.

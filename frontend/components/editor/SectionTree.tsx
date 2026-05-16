@@ -265,6 +265,31 @@ ${Object.entries(c.custom ?? {}).filter(([,lines])=>lines.filter(Boolean).length
 }
 
 /* ── Main component ── */
+function CompletenessBar({ resume }: { resume: ResumeContent }) {
+  const checks = [
+    !!(resume.contact?.name && resume.contact?.email),
+    !!(resume.summary && resume.summary.split(/\s+/).length >= 30),
+    (resume.experience ?? []).length >= 1 && (resume.experience![0].bullets?.length ?? 0) >= 1,
+    (resume.education ?? []).length >= 1,
+    (resume.skills?.technical ?? []).length >= 3,
+    (resume.projects ?? []).length >= 1 || (resume.certifications ?? []).length >= 1,
+  ];
+  const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+  const color = score >= 80 ? "var(--green)" : score >= 50 ? "var(--accent)" : "var(--amber)";
+
+  return (
+    <div>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 5 }}>
+        <span className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)" }}>completeness</span>
+        <span className="mono" style={{ fontSize: 10.5, color, fontWeight: 700 }}>{score}%</span>
+      </div>
+      <div style={{ height: 4, background: "var(--bg-3)", borderRadius: 99, overflow: "hidden" }}>
+        <div style={{ width: `${score}%`, height: "100%", background: color, borderRadius: 99, transition: "width 0.4s ease" }} />
+      </div>
+    </div>
+  );
+}
+
 export function SectionTree({
   resume, active, onSelect, heatmap,
   currentResumeId, onSwitchResume, onNewResume, resumeTitle, buildDriveHtml,
@@ -274,6 +299,7 @@ export function SectionTree({
   const [loadingList, setLoadingList] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [duplicatingId, setDuplicatingId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const drive = useDriveSave();
 
@@ -300,6 +326,19 @@ export function SectionTree({
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [showSwitcher]);
+
+  const handleDuplicate = async (r: Resume, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setDuplicatingId(r.id);
+    try {
+      const copy = await api.createResume(`${r.title} (copy)`, r.raw_text ?? undefined);
+      if (r.content) await api.updateResume(copy.id, { content: r.content });
+      setResumes(prev => [{ ...copy, content: r.content, ats_score: undefined }, ...prev]);
+      onSwitchResume({ ...copy, content: r.content });
+      setShowSwitcher(false);
+    } catch { /* silent */ }
+    finally { setDuplicatingId(null); }
+  };
 
   const handleDelete = async (r: Resume, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -494,6 +533,23 @@ export function SectionTree({
                       )}
                     </button>
 
+                    {/* Duplicate button */}
+                    <button
+                      onClick={(e) => handleDuplicate(r, e)}
+                      disabled={duplicatingId === r.id}
+                      title="Duplicate"
+                      className="mono"
+                      style={{
+                        flexShrink: 0, height: 22, padding: "0 6px", borderRadius: 4, border: 0,
+                        fontSize: 10, cursor: "pointer", background: "transparent", color: "var(--fg-4)",
+                        display: "flex", alignItems: "center",
+                      }}
+                      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = "var(--accent)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = "var(--fg-4)"; }}
+                    >
+                      {duplicatingId === r.id ? "…" : <Icon name="copy" size={10} />}
+                    </button>
+
                     {/* Delete button */}
                     <button
                       onClick={(e) => handleDelete(r, e)}
@@ -612,10 +668,11 @@ export function SectionTree({
         )}
       </div>
 
-      {/* Outline footer */}
+      {/* Completeness + Outline footer */}
       {resume && (
         <div style={{ borderTop: "1px solid var(--line)", padding: "10px 12px" }}>
-          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>outline</div>
+          <CompletenessBar resume={resume} />
+          <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8, marginTop: 10 }}>outline</div>
           {resume.contact?.name         && <Mini label="contact"    v="header" />}
           {resume.summary               && <Mini label="summary"    v={`${resume.summary.split(/\s+/).filter(Boolean).length} words`} />}
           {(resume.experience?.length ?? 0) > 0 && <Mini label="experience" v={`${resume.experience!.length} roles`} />}

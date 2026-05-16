@@ -45,7 +45,7 @@ export function CoverLetterPane({ resumeId, resume, jd }: CoverLetterPaneProps) 
     try {
       const token = JSON.parse(localStorage.getItem("resume-agent-auth") ?? "{}").state?.token ?? "";
       const res = await fetch(
-        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/cover-letter`,
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/resumes/${resumeId}/cover-letter/stream`,
         {
           method: "POST",
           headers: {
@@ -61,8 +61,27 @@ export function CoverLetterPane({ resumeId, resume, jd }: CoverLetterPaneProps) 
         }
       );
       if (!res.ok) throw new Error(`${res.status}`);
-      const data = await res.json();
-      setLetter(data.cover_letter ?? "");
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("No stream");
+      const decoder = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += decoder.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") { setLoading(false); break; }
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed.error) { setError(parsed.error); setLoading(false); return; }
+            if (parsed.token) setLetter(prev => prev + parsed.token);
+          } catch { /* skip malformed */ }
+        }
+      }
     } catch {
       setError("Failed to generate. Make sure a resume is open and try again.");
     } finally {
@@ -164,7 +183,7 @@ export function CoverLetterPane({ resumeId, resume, jd }: CoverLetterPaneProps) 
             style={{ width: "100%", justifyContent: "center", height: 32 }}
           >
             <Icon name="sparkle" size={11} />
-            {loading ? "generating…" : letter ? "regenerate" : "generate cover letter"}
+            {loading ? "writing…" : letter ? "regenerate" : "generate cover letter"}
           </button>
         </div>
       </div>
