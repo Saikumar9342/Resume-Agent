@@ -532,7 +532,7 @@ function StreamingText({ text }: { text: string }) {
   );
 }
 
-function PhotoUpload({ photo, onPhoto }: { photo?: string; onPhoto: (dataUrl: string) => void }) {
+function PhotoUpload({ photo, onPhoto, onRemove }: { photo?: string; onPhoto: (dataUrl: string) => void; onRemove: () => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [hover, setHover] = useState(false);
 
@@ -544,38 +544,62 @@ function PhotoUpload({ photo, onPhoto }: { photo?: string; onPhoto: (dataUrl: st
   };
 
   return (
-    <div
-      onClick={() => inputRef.current?.click()}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onDragOver={e => { e.preventDefault(); setHover(true); }}
-      onDragLeave={() => setHover(false)}
-      onDrop={e => { e.preventDefault(); setHover(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-      title={photo ? "Click to change photo" : "Click or drag to add photo"}
-      style={{
-        width: 72, height: 72, borderRadius: 8, flexShrink: 0,
-        border: `2px ${hover || !photo ? "dashed" : "solid"} ${hover ? "var(--accent)" : "var(--line)"}`,
-        background: photo ? "transparent" : "var(--bg-2)",
-        cursor: "pointer", overflow: "hidden",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        position: "relative", transition: "border-color 0.15s",
-      }}
-    >
-      <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-      {photo ? (
-        <>
-          <img src={photo} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-          {hover && (
-            <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <Icon name="edit" size={16} style={{ color: "#fff" }} />
-            </div>
-          )}
-        </>
-      ) : (
-        <div style={{ textAlign: "center", pointerEvents: "none" }}>
-          <Icon name="user" size={18} style={{ color: hover ? "var(--accent)" : "var(--fg-4)", display: "block", margin: "0 auto 4px" }} />
-          <span className="mono" style={{ fontSize: 9, color: hover ? "var(--accent)" : "var(--fg-4)" }}>add photo</span>
-        </div>
+    <div style={{ position: "relative", flexShrink: 0 }}>
+      <div
+        onClick={() => inputRef.current?.click()}
+        onMouseEnter={() => setHover(true)}
+        onMouseLeave={() => setHover(false)}
+        onDragOver={e => { e.preventDefault(); setHover(true); }}
+        onDragLeave={() => setHover(false)}
+        onDrop={e => { e.preventDefault(); setHover(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+        title={photo ? "Click to change photo" : "Click or drag to add photo"}
+        style={{
+          width: 76, height: 76, borderRadius: 8,
+          border: `2px ${hover || !photo ? "dashed" : "solid"} ${hover ? "var(--accent)" : "var(--line)"}`,
+          background: photo ? "transparent" : "var(--bg-2)",
+          cursor: "pointer", overflow: "hidden",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          position: "relative", transition: "border-color 0.15s",
+        }}
+      >
+        <input ref={inputRef} type="file" accept="image/*" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+        {photo ? (
+          <>
+            <img src={photo} alt="profile" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+            {hover && (
+              <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", gap: 4 }}>
+                <Icon name="edit" size={14} style={{ color: "#fff" }} />
+                <span className="mono" style={{ fontSize: 9, color: "#fff" }}>change</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{ textAlign: "center", pointerEvents: "none" }}>
+            <Icon name="user" size={18} style={{ color: hover ? "var(--accent)" : "var(--fg-4)", display: "block", margin: "0 auto 4px" }} />
+            <span className="mono" style={{ fontSize: 9, color: hover ? "var(--accent)" : "var(--fg-4)" }}>add photo</span>
+          </div>
+        )}
+      </div>
+
+      {/* Remove button — only shown when photo exists */}
+      {photo && (
+        <button
+          onClick={e => { e.stopPropagation(); onRemove(); }}
+          title="Remove photo"
+          style={{
+            position: "absolute", top: -7, right: -7,
+            width: 18, height: 18, borderRadius: 99,
+            background: "var(--bg-0)", border: "1.5px solid var(--line)",
+            color: "var(--fg-3)", cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 9, lineHeight: 1, padding: 0,
+            transition: "border-color 0.15s, color 0.15s",
+          }}
+          onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--red)"; (e.currentTarget as HTMLElement).style.color = "var(--red)"; }}
+          onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "var(--line)"; (e.currentTarget as HTMLElement).style.color = "var(--fg-3)"; }}
+        >
+          ✕
+        </button>
       )}
     </div>
   );
@@ -607,12 +631,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
 
       {/* ── Contact ── */}
       <header data-sec="contact" style={{ marginBottom: 26, opacity: 1, filter: "none", display: "flex", gap: 18, alignItems: "flex-start" }}>
-        {/* Photo upload zone */}
-        <PhotoUpload
-          photo={resume.contact?.photo}
-          onPhoto={dataUrl => patch(c => ({ ...c, contact: { ...c.contact, photo: dataUrl } }))}
-        />
-
+        {/* Name + contact info */}
         <div style={{ flex: 1, minWidth: 0 }}>
           <EditableText
             value={resume.contact?.name || ""}
@@ -634,6 +653,13 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
             ))}
           </div>
         </div>
+
+        {/* Photo upload — right side */}
+        <PhotoUpload
+          photo={resume.contact?.photo}
+          onPhoto={dataUrl => patch(c => ({ ...c, contact: { ...c.contact, photo: dataUrl } }))}
+          onRemove={() => patch(c => ({ ...c, contact: { ...c.contact, photo: undefined } }))}
+        />
       </header>
 
       {/* ── Summary ── */}
