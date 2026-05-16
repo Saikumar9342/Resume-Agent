@@ -200,6 +200,13 @@ export function MinimalTemplate({ resume: c, resumeStyle }: { resume: ResumeCont
           ))}
         </MnSection>
       )}
+      {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+        <MnSection key={title} label={title} spacing={s.sectionSpacing}>
+          {lines.filter(Boolean).map((line, i) => (
+            <div key={i} style={{ fontSize: s.fontSize * 0.92, color: s.bodyColor, marginBottom: 3 }}>· {line}</div>
+          ))}
+        </MnSection>
+      ))}
     </div>
   );
 }
@@ -289,6 +296,14 @@ export function ClassicTemplate({ resume: c, resumeStyle }: { resume: ResumeCont
           ))}
         </ul></>
       )}
+      {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+        <div key={title}>
+          <ClassicTitle acc={s.accentColor} fs={s.fontSize} sp={s.sectionSpacing}>{title}</ClassicTitle>
+          <ul style={{ margin: 0, paddingLeft: 16 }}>
+            {lines.filter(Boolean).map((line, i) => <li key={i} style={{ fontSize: s.fontSize * 0.92, marginBottom: 2, color: s.bodyColor }}>{line}</li>)}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -372,6 +387,14 @@ export function ModernTemplate({ resume: c, resumeStyle }: { resume: ResumeConte
             </div>
           ))}
         </>}
+        {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+          <div key={title}>
+            <MnTitle acc={ACC} fs={s.fontSize} sp={s.sectionSpacing}>{title}</MnTitle>
+            <ul style={{ margin: 0, paddingLeft: 13 }}>
+              {lines.filter(Boolean).map((line, i) => <li key={i} style={{ fontSize: s.fontSize * 0.92, color: s.bodyColor, marginBottom: 2 }}>{line}</li>)}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -458,6 +481,14 @@ export function ExecutiveTemplate({ resume: c, resumeStyle }: { resume: ResumeCo
           </>}
         </div>
       </div>
+      {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+        <div key={title}>
+          <ExecTitle acc={GOLD} fs={s.fontSize} sp={s.sectionSpacing}>{title}</ExecTitle>
+          <ul style={{ margin: 0, paddingLeft: 18 }}>
+            {lines.filter(Boolean).map((line, i) => <li key={i} style={{ fontSize: s.fontSize * 0.96, marginBottom: 3, color: s.bodyColor }}>{line}</li>)}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -537,6 +568,14 @@ export function CompactTemplate({ resume: c, resumeStyle }: { resume: ResumeCont
           </>}
         </div>
       </div>
+      {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+        <div key={title}>
+          <CpTitle acc={s.accentColor} fs={s.fontSize} sp={s.sectionSpacing}>{title}</CpTitle>
+          <ul style={{ margin: 0, paddingLeft: 14 }}>
+            {lines.filter(Boolean).map((line, i) => <li key={i} style={{ fontSize: s.fontSize * 0.87, color: s.bodyColor, marginBottom: 1 }}>{line}</li>)}
+          </ul>
+        </div>
+      ))}
     </div>
   );
 }
@@ -628,6 +667,14 @@ export function CreativeTemplate({ resume: c, resumeStyle }: { resume: ResumeCon
             </>}
           </div>
         </div>
+        {Object.entries(c.custom ?? {}).filter(([, lines]) => lines.length > 0).map(([title, lines]) => (
+          <div key={title}>
+            <CrTitle acc={ACC} fs={s.fontSize} sp={s.sectionSpacing}>{title}</CrTitle>
+            <ul style={{ margin: 0, paddingLeft: 14 }}>
+              {lines.filter(Boolean).map((line, i) => <li key={i} style={{ fontSize: s.fontSize * 0.92, color: s.bodyColor, marginBottom: 2 }}>{line}</li>)}
+            </ul>
+          </div>
+        ))}
       </div>
     </div>
   );
@@ -636,3 +683,4 @@ export function CreativeTemplate({ resume: c, resumeStyle }: { resume: ResumeCon
 function CrTitle({ children, acc, fs, sp }: { children: React.ReactNode; acc: string; fs: number; sp: number }) {
   return <div style={{ fontSize: fs * 0.87, textTransform: "uppercase", letterSpacing: "0.14em", fontWeight: 800, color: acc, marginBottom: sp * 0.45, marginTop: sp * 0.75 }}>{children}</div>;
 }
+

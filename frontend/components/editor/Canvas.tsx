@@ -966,6 +966,85 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
         </div>
       )}
 
+      {/* ── Custom Sections ── */}
+      {resume.custom && Object.entries(resume.custom).map(([title, lines]) => (
+        <div key={title} data-sec={`custom:${title}`} style={{ marginBottom: 28 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, marginBottom: 6 }}>
+            <span className="mono" style={{ color: "var(--fg-3)", fontSize: 11, width: 28, textAlign: "right" }}>{"<>"}</span>
+            <EditableText
+              value={title}
+              onSave={newTitle => {
+                if (!newTitle.trim() || newTitle === title) return;
+                patch(c => {
+                  const custom = { ...c.custom };
+                  const items = custom[title];
+                  delete custom[title];
+                  custom[newTitle] = items;
+                  return { ...c, custom };
+                });
+              }}
+              style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--accent)", fontWeight: 600 }}
+            />
+            <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
+            <button
+              onClick={() => patch(c => {
+                const custom = { ...c.custom };
+                delete custom[title];
+                return { ...c, custom };
+              })}
+              className="btn btn-ghost mono"
+              style={{ height: 20, fontSize: 10, padding: "0 6px", color: "var(--fg-4)" }}
+              title="Remove section"
+            >remove</button>
+          </div>
+          <ul style={{ margin: "0 0 0", padding: 0, listStyle: "none" }}>
+            {lines.map((line, li) => (
+              <div key={li} style={{ display: "flex", alignItems: "center", gap: 8, padding: "3px 0", fontSize: 13, color: "var(--fg-1)" }}>
+                <span className="mono" style={{ color: "var(--accent)", fontSize: 10, flexShrink: 0 }}>›</span>
+                <EditableText
+                  value={line}
+                  placeholder="Add content…"
+                  onSave={v => patch(c => {
+                    const custom = { ...c.custom };
+                    const arr = [...(custom[title] ?? [])];
+                    arr[li] = v;
+                    custom[title] = arr;
+                    return { ...c, custom };
+                  })}
+                  style={{ flex: 1 }}
+                />
+                <button
+                  onClick={() => patch(c => {
+                    const custom = { ...c.custom };
+                    custom[title] = (custom[title] ?? []).filter((_, i) => i !== li);
+                    return { ...c, custom };
+                  })}
+                  className="btn btn-ghost mono"
+                  style={{ width: 20, height: 20, padding: 0, justifyContent: "center", color: "var(--fg-4)", fontSize: 10 }}
+                >×</button>
+              </div>
+            ))}
+            <button
+              onClick={() => patch(c => {
+                const custom = { ...c.custom };
+                custom[title] = [...(custom[title] ?? []), ""];
+                return { ...c, custom };
+              })}
+              className="btn btn-ghost mono"
+              style={{ marginTop: 6, height: 22, fontSize: 10, color: "var(--fg-3)" }}
+            >
+              <Icon name="plus" size={9} /> add line
+            </button>
+          </ul>
+        </div>
+      ))}
+
+      {/* Add custom section button */}
+      <AddCustomSection onAdd={title => patch(c => ({
+        ...c,
+        custom: { ...(c.custom ?? {}), [title]: [""] },
+      }))} />
+
       {/* ── Section AI Chat ── */}
       {activeChat && resumeId && (
         <SectionChat
@@ -1057,6 +1136,52 @@ function AddSkillChip({ onAdd }: { onAdd: (v: string) => void }) {
     >
       <Icon name="plus" size={10} /> skill
     </button>
+  );
+}
+
+/* ── Add custom section ── */
+function AddCustomSection({ onAdd }: { onAdd: (title: string) => void }) {
+  const [adding, setAdding] = useState(false);
+  const [draft, setDraft] = useState("");
+
+  const commit = () => {
+    setAdding(false);
+    if (draft.trim()) { onAdd(draft.trim()); setDraft(""); }
+  };
+
+  if (adding) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 8, marginBottom: 16 }}>
+        <span className="mono" style={{ color: "var(--fg-3)", fontSize: 11, width: 28, textAlign: "right" }}>{"<>"}</span>
+        <input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={e => { if (e.key === "Enter") commit(); if (e.key === "Escape") { setAdding(false); setDraft(""); } }}
+          autoFocus
+          placeholder="Section title (e.g. Publications)"
+          className="mono"
+          style={{
+            flex: 1, background: "color-mix(in oklch, var(--accent) 5%, var(--bg-1))",
+            border: "1px solid var(--accent-line)", borderRadius: 4, outline: "none",
+            fontSize: 11, color: "var(--fg-0)", padding: "4px 8px",
+            textTransform: "uppercase", letterSpacing: "0.1em",
+          }}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", justifyContent: "center", marginTop: 12, marginBottom: 16 }}>
+      <button
+        onClick={() => setAdding(true)}
+        className="btn btn-ghost mono"
+        style={{ height: 26, fontSize: 11, borderStyle: "dashed", color: "var(--fg-3)", gap: 6 }}
+      >
+        <Icon name="plus" size={10} /> add section
+      </button>
+    </div>
   );
 }
 

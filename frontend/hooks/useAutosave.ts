@@ -8,7 +8,7 @@ import { api } from "@/lib/api";
 const AUTOSAVE_DEBOUNCE_MS = 2000;
 const SYNC_DEBOUNCE_MS = 8000;
 
-export function useAutosave(resumeId: string | null) {
+export function useAutosave(resumeId: string | null, atsScore?: number | null) {
   const { resume, editor, markDirty } = useResumeStore();
   const localTimer = useRef<ReturnType<typeof setTimeout>>(null);
   const syncTimer = useRef<ReturnType<typeof setTimeout>>(null);
@@ -30,7 +30,7 @@ export function useAutosave(resumeId: string | null) {
       synced: false,
     });
 
-    await saveVersion(resumeId, resume.content, "Auto-save", resume.raw_text ?? undefined);
+    await saveVersion(resumeId, resume.content, "Auto-save", resume.raw_text ?? undefined, atsScore ?? undefined);
   }, [resume, resumeId]);
 
   const doServerSync = useCallback(async () => {

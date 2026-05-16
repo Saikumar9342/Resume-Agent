@@ -43,6 +43,7 @@ export interface ResumeContent {
   skills: ResumeSkills;
   certifications: string[];
   projects: ResumeProject[];
+  custom?: Record<string, string[]>; // key = section title, value = bullet lines
 }
 
 export interface Resume {

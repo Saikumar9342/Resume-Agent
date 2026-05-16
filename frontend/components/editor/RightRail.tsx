@@ -689,6 +689,53 @@ function ATSScoreRing({ score }: { score: number }) {
   );
 }
 
+/* ── ATS Score Sparkline ── */
+function ATSSparkline({ versions }: { versions: VersionEntry[] }) {
+  const scored = versions.filter(v => v.score != null).slice().reverse();
+  if (scored.length < 2) return null;
+  const scores = scored.map(v => v.score!);
+  const min = Math.min(...scores, 0);
+  const max = Math.max(...scores, 100);
+  const range = max - min || 1;
+  const W = 180, H = 40, PAD = 4;
+  const pts = scores.map((s, i) => {
+    const x = PAD + (i / (scores.length - 1)) * (W - PAD * 2);
+    const y = H - PAD - ((s - min) / range) * (H - PAD * 2);
+    return `${x},${y}`;
+  }).join(" ");
+  const last = scores[scores.length - 1];
+  const trend = scores.length >= 2 ? last - scores[scores.length - 2] : 0;
+  const color = last >= 80 ? "var(--green)" : last >= 60 ? "var(--amber)" : "var(--red)";
+
+  return (
+    <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <SectionLabel>ats score history</SectionLabel>
+        <div style={{ textAlign: "right" }}>
+          <span style={{ fontSize: 22, fontWeight: 500, color, letterSpacing: "-0.04em" }}>{last}</span>
+          {trend !== 0 && (
+            <span className="mono" style={{ fontSize: 10, color: trend > 0 ? "var(--green)" : "var(--red)", marginLeft: 4 }}>
+              {trend > 0 ? "▲" : "▼"}{Math.abs(trend)}
+            </span>
+          )}
+        </div>
+      </div>
+      <svg width={W} height={H} style={{ display: "block", marginTop: 8, overflow: "visible" }}>
+        <polyline points={pts} fill="none" stroke={color} strokeWidth={1.5} strokeLinejoin="round" strokeLinecap="round" />
+        {scores.map((s, i) => {
+          const x = PAD + (i / (scores.length - 1)) * (W - PAD * 2);
+          const y = H - PAD - ((s - min) / range) * (H - PAD * 2);
+          return <circle key={i} cx={x} cy={y} r={i === scores.length - 1 ? 3.5 : 2} fill={color} />;
+        })}
+      </svg>
+      <div style={{ display: "flex", justifyContent: "space-between", marginTop: 3 }}>
+        <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{scored[0].time}</span>
+        <span className="mono" style={{ fontSize: 9.5, color: "var(--fg-4)" }}>{scored[scored.length - 1].time}</span>
+      </div>
+    </div>
+  );
+}
+
 /* ── Versions Pane ── */
 function VersionsPane({ versions, onRestore, onShowDiff }: { versions: VersionEntry[]; onRestore: (id: string) => void; onShowDiff?: () => void }) {
   if (versions.length === 0) {
@@ -702,6 +749,7 @@ function VersionsPane({ versions, onRestore, onShowDiff }: { versions: VersionEn
   }
   return (
     <div style={{ overflow: "auto", flex: 1 }}>
+      <ATSSparkline versions={versions} />
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <SectionLabel>git log · resume</SectionLabel>

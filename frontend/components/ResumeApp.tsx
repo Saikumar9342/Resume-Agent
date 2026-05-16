@@ -121,7 +121,7 @@ ${fontLink}
     setAIState("idle");
     setRailTab("ai");
   });
-  const { saveBeforeAI } = useAutosave(resumeId);
+  const { saveBeforeAI } = useAutosave(resumeId, ats?.score);
 
   // Sync aiState from store
   useEffect(() => {
@@ -176,7 +176,7 @@ ${fontLink}
           label: `v${vs.length - i}`,
           note: v.label || "Auto-save",
           time: formatTime(v.savedAt),
-          score: undefined,
+          score: v.atsScore,
           current: i === 0,
         })));
       });

@@ -17,6 +17,7 @@ export interface ResumeVersion {
   raw_text?: string;
   savedAt: number;
   label: string;     // "Auto-save", "Before AI rewrite", etc.
+  atsScore?: number;
 }
 
 class ResumeDB extends Dexie {
@@ -26,6 +27,10 @@ class ResumeDB extends Dexie {
   constructor() {
     super("ResumeAgentDB");
     this.version(1).stores({
+      resumes: "id, savedAt, synced",
+      versions: "++id, resumeId, savedAt",
+    });
+    this.version(2).stores({
       resumes: "id, savedAt, synced",
       versions: "++id, resumeId, savedAt",
     });
@@ -54,7 +59,8 @@ export async function saveVersion(
   resumeId: string,
   content: ResumeContent,
   label: string,
-  raw_text?: string
+  raw_text?: string,
+  atsScore?: number
 ) {
   // Keep max 20 versions per resume
   const existing = await db.versions
@@ -73,6 +79,7 @@ export async function saveVersion(
     raw_text,
     savedAt: Date.now(),
     label,
+    atsScore,
   });
 }
 

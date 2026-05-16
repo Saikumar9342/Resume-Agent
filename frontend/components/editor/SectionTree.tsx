@@ -260,6 +260,7 @@ ${(c.education ?? []).length ? `<h2>Education</h2>${(c.education??[]).map(e=>`<d
 ${skills.length ? `<h2>Skills</h2><div class="skills">${skills.map(esc).join("  ·  ")}</div>` : ""}
 ${(c.projects ?? []).length ? `<h2>Projects</h2>${(c.projects??[]).map(p=>`<div><span class="role">${esc(p.name)}</span>${p.technologies?.length?` <span style="font-size:11px;color:#888">${p.technologies.map(esc).join(", ")}</span>`:""}${p.description?`<div style="font-size:13px">${esc(p.description)}</div>`:""}</div>`).join("")}` : ""}
 ${(c.certifications ?? []).length ? `<h2>Certifications</h2><ul>${(c.certifications??[]).map(cert=>`<li>${esc(typeof cert==="string"?cert:(cert as any).name??"")}</li>`).join("")}</ul>` : ""}
+${Object.entries(c.custom ?? {}).filter(([,lines])=>lines.filter(Boolean).length>0).map(([title,lines])=>`<h2>${esc(title)}</h2><ul>${lines.filter(Boolean).map(l=>`<li>${esc(l)}</li>`).join("")}</ul>`).join("\n")}
 </body></html>`;
 }
 
@@ -594,6 +595,19 @@ export function SectionTree({
                 ))}
               </div>
             )}
+
+            {/* Custom sections */}
+            {Object.keys(resume.custom ?? {}).map(title => (
+              <div key={title} className="mono" style={{
+                width: "100%", display: "flex", alignItems: "center", gap: 8,
+                padding: "5px 8px", fontSize: 12, borderRadius: 5,
+                color: "var(--fg-2)",
+              }}>
+                <Icon name="doc" size={13} />
+                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{title.toLowerCase()}.md</span>
+                <span className="mono" style={{ fontSize: 9, color: "var(--fg-4)" }}>custom</span>
+              </div>
+            ))}
           </>
         )}
       </div>
@@ -608,6 +622,9 @@ export function SectionTree({
           {(resume.education?.length  ?? 0) > 0 && <Mini label="education"  v={`${resume.education!.length} deg.`} />}
           {(resume.skills?.technical?.length ?? 0) > 0 && <Mini label="skills" v={`${resume.skills!.technical!.length} items`} />}
           {(resume.projects?.length   ?? 0) > 0 && <Mini label="projects"   v={`${resume.projects!.length} listed`} />}
+          {Object.entries(resume.custom ?? {}).map(([title, lines]) => (
+            <Mini key={title} label={title.toLowerCase()} v={`${lines.filter(Boolean).length} lines`} />
+          ))}
         </div>
       )}
     </aside>
