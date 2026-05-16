@@ -10,7 +10,7 @@ import { getVersions, restoreVersion } from "@/lib/db";
 import { Landing } from "@/components/landing/Landing";
 import { AuthModal } from "@/components/auth/AuthModal";
 import { useAuthStore } from "@/store/authStore";
-import { TopBar } from "@/components/editor/TopBar";
+import { TopBar, FloatingActions } from "@/components/editor/TopBar";
 import { JDBar } from "@/components/editor/JDBar";
 import { SectionTree } from "@/components/editor/SectionTree";
 import { Canvas } from "@/components/editor/Canvas";
@@ -458,9 +458,6 @@ export function ResumeApp() {
         onPalette={() => setPaletteOpen(true)}
         onRunAI={() => handleAIRewrite()}
         onStopAI={() => { cancelAI(); setAIState("idle"); }}
-        onHistory={() => setRailTab("versions")}
-        onShare={resumeId ? handleShare : undefined}
-        onExport={handleExport}
         onBack={() => setScreen("landing")}
         aiState={aiState}
         isDirty={editor.isDirty}
@@ -497,6 +494,7 @@ export function ResumeApp() {
             localStorage.removeItem("last_resume_id");
             setScreen("editor");
           }}
+          resumeTitle={resume?.title}
         />
 
         {!resumeId ? (
@@ -698,21 +696,31 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
             </div>
           </main>
         ) : (
-          <Canvas
-            resume={resume?.content ?? null}
-            rawText={rawText}
-            activeSection={activeSection}
-            heatmap={heatmap}
-            onToggleHeatmap={() => setHeatmap(v => !v)}
-            aiState={aiState}
-            ats={ats}
-            onTextChange={text => { setRawText(text); markDirty(true); }}
-            onSectionRewrite={handleSectionRewrite}
-            requestGhost={requestGhost}
-            resumeId={resumeId}
-            resumeStyle={resumeStyle}
-            template={template}
-          />
+          <div style={{ position: "relative", minHeight: 0, display: "flex", flexDirection: "column" }}>
+            <Canvas
+              resume={resume?.content ?? null}
+              rawText={rawText}
+              activeSection={activeSection}
+              heatmap={heatmap}
+              onToggleHeatmap={() => setHeatmap(v => !v)}
+              aiState={aiState}
+              ats={ats}
+              onTextChange={text => { setRawText(text); markDirty(true); }}
+              onSectionRewrite={handleSectionRewrite}
+              requestGhost={requestGhost}
+              resumeId={resumeId}
+              resumeStyle={resumeStyle}
+              template={template}
+            />
+            <FloatingActions
+              onRunAI={() => handleAIRewrite()}
+              onStopAI={() => { cancelAI(); setAIState("idle"); }}
+              onExport={handleExport}
+              onShare={resumeId ? handleShare : undefined}
+              onHistory={() => setRailTab("versions")}
+              aiState={aiState}
+            />
+          </div>
         )}
 
         <RightRail

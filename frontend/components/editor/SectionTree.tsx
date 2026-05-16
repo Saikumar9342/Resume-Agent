@@ -15,16 +15,17 @@ interface SectionTreeProps {
   currentResumeId: string | null;
   onSwitchResume: (resume: Resume) => void;
   onNewResume: () => void;
+  resumeTitle?: string;
 }
 
 const SECTION_META: Array<{ id: SectionId; label: string; icon: string }> = [
-  { id: "contact",        label: "contact.tsx",        icon: "user" },
-  { id: "summary",        label: "summary.md",         icon: "summary" },
-  { id: "experience",     label: "experience/",        icon: "briefcase" },
-  { id: "education",      label: "education.tsx",      icon: "cap" },
-  { id: "skills",         label: "skills.json",        icon: "wrench" },
-  { id: "certifications", label: "certifications.md",  icon: "badge" },
-  { id: "projects",       label: "projects/",          icon: "code" },
+  { id: "contact",        label: "contact.tsx",       icon: "user" },
+  { id: "summary",        label: "summary.md",        icon: "summary" },
+  { id: "experience",     label: "experience/",       icon: "briefcase" },
+  { id: "education",      label: "education.tsx",     icon: "cap" },
+  { id: "skills",         label: "skills.json",       icon: "wrench" },
+  { id: "certifications", label: "certifications.md", icon: "badge" },
+  { id: "projects",       label: "projects/",         icon: "code" },
 ];
 
 function sectionHeat(id: SectionId, resume: ResumeContent | null): "red" | "amber" | "green" | null {
@@ -66,33 +67,125 @@ function Mini({ label, v }: { label: string; v: string }) {
   );
 }
 
-export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId, onSwitchResume, onNewResume }: SectionTreeProps) {
+/* ── Google Drive save hook ── */
+function useDriveSave() {
+  const [driveToken, setDriveToken] = useState<string | null>(
+    typeof window !== "undefined" ? sessionStorage.getItem("gdrive_token") : null
+  );
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<"idle" | "success" | "error">("idle");
+
+  const connect = async () => {
+    const { url } = await api.getDriveAuthUrl();
+    const popup = window.open(url, "gdrive-auth", "width=500,height=600,left=300,top=100");
+    const handler = (e: MessageEvent) => {
+      if (e.data?.type === "GDRIVE_TOKEN" && e.data.token) {
+        setDriveToken(e.data.token);
+        sessionStorage.setItem("gdrive_token", e.data.token);
+        window.removeEventListener("message", handler);
+        popup?.close();
+      }
+    };
+    window.addEventListener("message", handler);
+  };
+
+  const save = async (title: string, content: ResumeContent) => {
+    if (!driveToken) { await connect(); return; }
+    setSaving(true); setStatus("idle");
+    try {
+      // Build a minimal HTML representation of the resume
+      const c = content;
+      const html = buildResumeHtml(c, title);
+      await api.saveToDrive(driveToken, `${title}.html`, html);
+      setStatus("success");
+      setTimeout(() => setStatus("idle"), 3000);
+    } catch {
+      setStatus("error");
+      setTimeout(() => setStatus("idle"), 3000);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return { driveToken, saving, status, connect, save };
+}
+
+function buildResumeHtml(c: ResumeContent, title: string): string {
+  const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const contact = c.contact ?? {};
+  const skills = [...(c.skills?.technical ?? []), ...(c.skills?.soft ?? [])];
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>${esc(title)}</title>
+<style>
+  body{font-family:Georgia,serif;max-width:800px;margin:40px auto;padding:0 32px;color:#111;line-height:1.6}
+  h1{font-size:26px;margin:0 0 4px}
+  .contact{font-size:12px;color:#555;margin-bottom:20px}
+  h2{font-size:13px;text-transform:uppercase;letter-spacing:.12em;border-bottom:1px solid #999;padding-bottom:3px;margin:18px 0 8px;color:#333}
+  .role{font-weight:bold} .date{float:right;color:#777;font-size:12px} .title{font-style:italic;color:#555;font-size:13px}
+  ul{margin:4px 0 0;padding-left:18px} li{font-size:13px;margin-bottom:2px}
+  .skills{font-size:13px;line-height:1.9}
+</style></head><body>
+<h1>${esc(contact.name || "")}</h1>
+<div class="contact">${[contact.email,contact.phone,contact.location,contact.linkedin,contact.github].filter(Boolean).map(esc).join("  ·  ")}</div>
+${c.summary ? `<h2>Summary</h2><p style="font-size:13px">${esc(c.summary)}</p>` : ""}
+${(c.experience ?? []).length ? `<h2>Experience</h2>${(c.experience??[]).map(e=>`<div><span class="role">${esc(e.company)}</span><span class="date">${esc(e.start)}–${esc(e.end??"Present")}</span><div class="title">${esc(e.title)}</div><ul>${(e.bullets??[]).map(b=>`<li>${esc(b)}</li>`).join("")}</ul></div>`).join("")}` : ""}
+${(c.education ?? []).length ? `<h2>Education</h2>${(c.education??[]).map(e=>`<div><span class="role">${esc(e.institution)}</span><span class="date">${esc(e.year??"")}</span><div class="title">${esc(e.degree)}${e.field?" in "+esc(e.field):""}</div></div>`).join("")}` : ""}
+${skills.length ? `<h2>Skills</h2><div class="skills">${skills.map(esc).join("  ·  ")}</div>` : ""}
+${(c.projects ?? []).length ? `<h2>Projects</h2>${(c.projects??[]).map(p=>`<div><span class="role">${esc(p.name)}</span>${p.technologies?.length?` <span style="font-size:11px;color:#888">${p.technologies.map(esc).join(", ")}</span>`:""}${p.description?`<div style="font-size:13px">${esc(p.description)}</div>`:""}</div>`).join("")}` : ""}
+${(c.certifications ?? []).length ? `<h2>Certifications</h2><ul>${(c.certifications??[]).map(cert=>`<li>${esc(typeof cert==="string"?cert:(cert as any).name??"")}</li>`).join("")}</ul>` : ""}
+</body></html>`;
+}
+
+/* ── Main component ── */
+export function SectionTree({
+  resume, active, onSelect, heatmap,
+  currentResumeId, onSwitchResume, onNewResume, resumeTitle,
+}: SectionTreeProps) {
   const [showSwitcher, setShowSwitcher] = useState(false);
   const [resumes, setResumes] = useState<Resume[]>([]);
   const [loadingList, setLoadingList] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [confirmId, setConfirmId] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
+  const drive = useDriveSave();
 
-  // Load resume list when switcher opens
-  useEffect(() => {
-    if (!showSwitcher) return;
+  const loadResumes = () => {
     setLoadingList(true);
     api.listResumes()
       .then(r => setResumes(r))
       .catch(() => {})
       .finally(() => setLoadingList(false));
+  };
+
+  useEffect(() => {
+    if (showSwitcher) loadResumes();
   }, [showSwitcher]);
 
-  // Close on outside click
   useEffect(() => {
     if (!showSwitcher) return;
     const h = (e: MouseEvent) => {
       if (panelRef.current && !panelRef.current.contains(e.target as Node)) {
         setShowSwitcher(false);
+        setConfirmId(null);
       }
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [showSwitcher]);
+
+  const handleDelete = async (r: Resume, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (confirmId !== r.id) { setConfirmId(r.id); return; }
+    setDeletingId(r.id);
+    setConfirmId(null);
+    try {
+      await api.deleteResume(r.id);
+      setResumes(prev => prev.filter(x => x.id !== r.id));
+      if (r.id === currentResumeId) onNewResume();
+    } catch { /* silent */ }
+    finally { setDeletingId(null); }
+  };
 
   return (
     <aside style={{
@@ -102,12 +195,10 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
       minHeight: 0, overflow: "hidden",
       position: "relative",
     }}>
-      {/* tree header */}
+      {/* Header */}
       <div style={{
         height: 34, display: "flex", alignItems: "center", justifyContent: "space-between",
-        padding: "0 12px",
-        borderBottom: "1px solid var(--line)",
-        color: "var(--fg-3)",
+        padding: "0 12px", borderBottom: "1px solid var(--line)", color: "var(--fg-3)",
       }}>
         <span className="mono" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.08em" }}>resume</span>
         <div style={{ display: "flex", gap: 2 }}>
@@ -124,45 +215,133 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
 
       {/* Resume switcher panel */}
       {showSwitcher && (
-        <div
-          ref={panelRef}
-          style={{
-            position: "absolute", top: 34, left: 0, right: 0,
-            background: "var(--bg-1)", border: "1px solid var(--line)",
-            borderTop: "none", zIndex: 20,
-            boxShadow: "0 8px 24px -8px black",
-          }}
-        >
-          <div style={{ padding: "8px 10px 4px" }}>
-            <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
-              your resumes
-            </div>
-            {loadingList && <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", padding: "4px 0" }}>loading…</div>}
-            {resumes.map(r => (
-              <button
-                key={r.id}
-                onClick={() => { onSwitchResume(r); setShowSwitcher(false); }}
-                className="mono"
-                style={{
-                  width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                  padding: "5px 6px", borderRadius: 4, border: 0,
-                  background: r.id === currentResumeId ? "var(--bg-3)" : "transparent",
-                  color: r.id === currentResumeId ? "var(--accent)" : "var(--fg-1)",
-                  fontSize: 11.5, cursor: "pointer", textAlign: "left", gap: 8,
-                }}
-              >
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {r.id === currentResumeId && <span style={{ color: "var(--accent)", marginRight: 4 }}>●</span>}
-                  {r.title}
-                </span>
-                {r.ats_score != null && (
-                  <span style={{ fontSize: 10, color: r.ats_score >= 80 ? "var(--green)" : r.ats_score >= 60 ? "var(--amber)" : "var(--red)", flexShrink: 0 }}>
-                    {r.ats_score}
-                  </span>
-                )}
-              </button>
-            ))}
+        <div ref={panelRef} style={{
+          position: "absolute", top: 34, left: 0, right: 0,
+          background: "var(--bg-1)", border: "1px solid var(--line)",
+          borderTop: "none", zIndex: 20,
+          boxShadow: "0 8px 32px -8px rgba(0,0,0,0.4)",
+          display: "flex", flexDirection: "column", maxHeight: "60vh",
+        }}>
+          {/* Drive save row */}
+          <div style={{
+            padding: "8px 10px", borderBottom: "1px solid var(--line)",
+            display: "flex", alignItems: "center", gap: 8,
+          }}>
+            <Icon name="download" size={11} style={{ color: "var(--fg-3)", flexShrink: 0 }} />
+            <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", flex: 1 }}>
+              {drive.driveToken ? "Connected to Drive" : "Save to Google Drive"}
+            </span>
+            <button
+              onClick={async () => {
+                if (!drive.driveToken) { await drive.connect(); return; }
+                if (resume && resumeTitle) await drive.save(resumeTitle, resume);
+              }}
+              disabled={drive.saving || (!drive.driveToken && false)}
+              className="btn mono"
+              style={{
+                height: 24, fontSize: 10.5, padding: "0 9px", flexShrink: 0,
+                background: drive.status === "success" ? "color-mix(in oklch, var(--green) 12%, var(--bg-2))"
+                  : drive.status === "error" ? "color-mix(in oklch, var(--red) 12%, var(--bg-2))"
+                  : drive.driveToken ? "var(--bg-2)" : "color-mix(in oklch, #4285f4 10%, var(--bg-2))",
+                color: drive.status === "success" ? "var(--green)"
+                  : drive.status === "error" ? "var(--red)"
+                  : drive.driveToken ? "var(--fg-1)" : "#4285f4",
+                border: `1px solid ${drive.driveToken ? "var(--line)" : "#4285f4"}`,
+                borderRadius: 5,
+              }}
+            >
+              {drive.saving ? "saving…"
+                : drive.status === "success" ? "✓ saved!"
+                : drive.status === "error" ? "error"
+                : drive.driveToken ? "save now"
+                : "connect"}
+            </button>
           </div>
+
+          {/* Resume list */}
+          <div style={{ overflowY: "auto", flex: 1 }}>
+            <div style={{ padding: "8px 10px 4px" }}>
+              <div className="mono" style={{ fontSize: 9.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 6 }}>
+                your resumes
+              </div>
+              {loadingList && (
+                <div className="mono" style={{ fontSize: 11, color: "var(--fg-3)", padding: "4px 0" }}>loading…</div>
+              )}
+              {resumes.map(r => {
+                const isActive = r.id === currentResumeId;
+                const isConfirm = confirmId === r.id;
+                const isDeleting = deletingId === r.id;
+                return (
+                  <div
+                    key={r.id}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4,
+                      borderRadius: 5, marginBottom: 1,
+                      background: isActive ? "var(--bg-3)" : "transparent",
+                      padding: "2px 4px",
+                    }}
+                    onMouseLeave={() => { if (confirmId === r.id) setConfirmId(null); }}
+                  >
+                    {/* Resume name button */}
+                    <button
+                      onClick={() => { if (!isActive) { onSwitchResume(r); setShowSwitcher(false); setConfirmId(null); } }}
+                      className="mono"
+                      style={{
+                        flex: 1, display: "flex", alignItems: "center", justifyContent: "space-between",
+                        padding: "4px 4px", border: 0, minWidth: 0,
+                        background: "transparent",
+                        color: isActive ? "var(--accent)" : "var(--fg-1)",
+                        fontSize: 11.5, cursor: isActive ? "default" : "pointer", textAlign: "left", gap: 6,
+                      }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+                        {isActive && <span style={{ color: "var(--accent)", fontSize: 8, flexShrink: 0 }}>●</span>}
+                        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {r.title}
+                        </span>
+                      </span>
+                      {r.ats_score != null && (
+                        <span style={{
+                          fontSize: 10, flexShrink: 0,
+                          color: r.ats_score >= 80 ? "var(--green)" : r.ats_score >= 60 ? "var(--amber)" : "var(--red)",
+                        }}>
+                          {r.ats_score}
+                        </span>
+                      )}
+                    </button>
+
+                    {/* Delete button */}
+                    <button
+                      onClick={(e) => handleDelete(r, e)}
+                      disabled={isDeleting}
+                      title={isConfirm ? "Click again to confirm" : "Delete"}
+                      className="mono"
+                      style={{
+                        flexShrink: 0, height: 22, padding: "0 6px", borderRadius: 4, border: 0,
+                        fontSize: 10, cursor: "pointer",
+                        background: isConfirm
+                          ? "color-mix(in oklch, var(--red) 15%, var(--bg-2))"
+                          : "transparent",
+                        color: isConfirm ? "var(--red)" : "var(--fg-4)",
+                        transition: "background 0.15s, color 0.15s",
+                        display: "flex", alignItems: "center", gap: 3,
+                      }}
+                      onMouseEnter={e => {
+                        if (!isConfirm) (e.currentTarget as HTMLElement).style.color = "var(--red)";
+                      }}
+                      onMouseLeave={e => {
+                        if (!isConfirm) (e.currentTarget as HTMLElement).style.color = "var(--fg-4)";
+                      }}
+                    >
+                      {isDeleting ? "…" : isConfirm ? "confirm?" : <Icon name="x" size={10} />}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Footer */}
           <div style={{ borderTop: "1px solid var(--line)", padding: "4px 10px 8px" }}>
             <button
               onClick={() => { onNewResume(); setShowSwitcher(false); }}
@@ -184,14 +363,13 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
         ) : (
           <>
             {SECTION_META.map((s) => {
-              // Only show sections that have actual content
-              if (s.id === "contact" && !resume.contact?.name && !resume.contact?.email) return null;
-              if (s.id === "summary" && !resume.summary) return null;
-              if (s.id === "experience" && !(resume.experience?.length)) return null;
-              if (s.id === "education" && !(resume.education?.length)) return null;
-              if (s.id === "skills" && !(resume.skills?.technical?.length)) return null;
-              if (s.id === "certifications" && !(resume.certifications?.length)) return null;
-              if (s.id === "projects" && !(resume.projects?.length)) return null;
+              if (s.id === "contact"        && !resume.contact?.name && !resume.contact?.email) return null;
+              if (s.id === "summary"        && !resume.summary)                                  return null;
+              if (s.id === "experience"     && !(resume.experience?.length))                     return null;
+              if (s.id === "education"      && !(resume.education?.length))                      return null;
+              if (s.id === "skills"         && !(resume.skills?.technical?.length))              return null;
+              if (s.id === "certifications" && !(resume.certifications?.length))                 return null;
+              if (s.id === "projects"       && !(resume.projects?.length))                       return null;
 
               const isActive = active === s.id;
               const heat = heatmap ? sectionHeat(s.id, resume) : null;
@@ -218,7 +396,6 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
               );
             })}
 
-            {/* sub items under experience */}
             {resume.experience && resume.experience.length > 0 && (
               <div style={{ marginLeft: 18, marginTop: 4, marginBottom: 8, borderLeft: "1px solid var(--line-soft)", paddingLeft: 8 }}>
                 {resume.experience.map((exp, i) => (
@@ -238,16 +415,16 @@ export function SectionTree({ resume, active, onSelect, heatmap, currentResumeId
         )}
       </div>
 
-      {/* footer outline — only shown when resume has content */}
+      {/* Outline footer */}
       {resume && (
         <div style={{ borderTop: "1px solid var(--line)", padding: "10px 12px" }}>
           <div className="mono" style={{ fontSize: 10.5, color: "var(--fg-3)", textTransform: "uppercase", letterSpacing: "0.08em", marginBottom: 8 }}>outline</div>
-          {resume.contact?.name && <Mini label="contact" v="header" />}
-          {resume.summary && <Mini label="summary" v={`${resume.summary.split(/\s+/).filter(Boolean).length} words`} />}
+          {resume.contact?.name         && <Mini label="contact"    v="header" />}
+          {resume.summary               && <Mini label="summary"    v={`${resume.summary.split(/\s+/).filter(Boolean).length} words`} />}
           {(resume.experience?.length ?? 0) > 0 && <Mini label="experience" v={`${resume.experience!.length} roles`} />}
-          {(resume.education?.length ?? 0) > 0 && <Mini label="education" v={`${resume.education!.length} deg.`} />}
+          {(resume.education?.length  ?? 0) > 0 && <Mini label="education"  v={`${resume.education!.length} deg.`} />}
           {(resume.skills?.technical?.length ?? 0) > 0 && <Mini label="skills" v={`${resume.skills!.technical!.length} items`} />}
-          {(resume.projects?.length ?? 0) > 0 && <Mini label="projects" v={`${resume.projects!.length} listed`} />}
+          {(resume.projects?.length   ?? 0) > 0 && <Mini label="projects"   v={`${resume.projects!.length} listed`} />}
         </div>
       )}
     </aside>

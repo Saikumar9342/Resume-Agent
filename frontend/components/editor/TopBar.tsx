@@ -14,8 +14,8 @@ interface TopBarProps {
   onPalette: () => void;
   onRunAI: () => void;
   onStopAI?: () => void;
-  onHistory: () => void;
-  onExport: () => void;
+  onHistory?: () => void;
+  onExport?: () => void;
   onShare?: () => void;
   onBack: () => void;
   aiState: "idle" | "streaming" | "review" | "accepted";
@@ -286,54 +286,86 @@ export function TopBar({ resumeTitle, onTitleChange, onPalette, onRunAI, onStopA
         </span>
       </button>
 
-      {/* Right: grouped actions */}
-      <div style={{ display: "flex", gap: 6, alignItems: "center", justifyContent: "flex-end" }}>
-
-        {/* Secondary actions */}
-        <div style={{ display: "flex", gap: 2, alignItems: "center", paddingRight: 8, borderRight: "1px solid var(--line)" }}>
-          {onShare && (
-            <button onClick={onShare} className="btn btn-ghost mono" title="Share resume" style={{ height: 30, fontSize: 11.5 }}>
-              <Icon name="branch" size={11} /> share
-            </button>
-          )}
-          <button onClick={onExport} className="btn btn-ghost mono" style={{ height: 30, fontSize: 11.5 }}>
-            <Icon name="download" size={11} /> export
-          </button>
-          <button onClick={onHistory} className="btn btn-ghost mono" style={{ height: 30, fontSize: 11.5 }}>
-            <Icon name="clock" size={11} /> history
-          </button>
-        </div>
-
-        {/* AI action */}
-        <div style={{ display: "flex", gap: 4, alignItems: "center", paddingRight: 8, borderRight: "1px solid var(--line)" }}>
-          {aiState === "streaming" && (
-            <button
-              onClick={onStopAI}
-              className="btn mono"
-              style={{ height: 30, fontSize: 11.5, background: "var(--bg-2)", color: "var(--fg-2)", border: "1px solid var(--line)" }}
-            >
-              <Icon name="x" size={11} /> stop
-            </button>
-          )}
-          <button
-            onClick={onRunAI}
-            disabled={aiState === "streaming"}
-            className="btn btn-accent mono"
-            style={{ height: 30, fontSize: 12, opacity: aiState === "streaming" ? 0.5 : 1 }}
-          >
-            <Icon name="sparkle" size={12} />
-            {aiState === "streaming" ? "rewriting…" : "rewrite"}
-            <span className="kbd" style={{
-              borderColor: "color-mix(in oklch, var(--bg-0) 50%, transparent)",
-              color: "var(--bg-0)",
-              background: "color-mix(in oklch, var(--bg-0) 18%, var(--accent))",
-            }}>{mod}↵</span>
-          </button>
-        </div>
-
-        {/* User avatar + dropdown */}
+      {/* Right: only user avatar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end" }}>
         <UserMenu user={user} clearAuth={clearAuth} theme={theme} toggleTheme={toggleTheme} />
       </div>
     </header>
+  );
+}
+
+/* ── Floating action bar — rendered inside the canvas area ── */
+interface FloatingActionsProps {
+  onRunAI: () => void;
+  onStopAI?: () => void;
+  onExport: () => void;
+  onShare?: () => void;
+  onHistory: () => void;
+  aiState: "idle" | "streaming" | "review" | "accepted";
+}
+
+export function FloatingActions({ onRunAI, onStopAI, onExport, onShare, onHistory, aiState }: FloatingActionsProps) {
+  const mod = modKey();
+
+  return (
+    <div style={{
+      position: "absolute", bottom: 20, right: 20, zIndex: 20,
+      display: "flex", alignItems: "center", gap: 6,
+      background: "var(--bg-1)",
+      border: "1px solid var(--line)",
+      borderRadius: 12,
+      padding: "5px 8px",
+      boxShadow: "0 4px 24px rgba(0,0,0,0.25)",
+      backdropFilter: "blur(8px)",
+    }}>
+      {/* Secondary actions */}
+      {onShare && (
+        <FloatBtn icon="branch" label="share" onClick={onShare} />
+      )}
+      <FloatBtn icon="download" label="export" onClick={onExport} />
+      <FloatBtn icon="clock" label="history" onClick={onHistory} />
+
+      <div style={{ width: 1, height: 20, background: "var(--line)", margin: "0 2px" }} />
+
+      {/* Stop button when streaming */}
+      {aiState === "streaming" && (
+        <button
+          onClick={onStopAI}
+          className="btn mono"
+          style={{ height: 30, fontSize: 11.5, background: "var(--bg-2)", color: "var(--fg-2)", border: "1px solid var(--line)", borderRadius: 7 }}
+        >
+          <Icon name="x" size={11} /> stop
+        </button>
+      )}
+
+      {/* Primary AI rewrite */}
+      <button
+        onClick={onRunAI}
+        disabled={aiState === "streaming"}
+        className="btn btn-accent mono"
+        style={{ height: 30, fontSize: 12, borderRadius: 8, opacity: aiState === "streaming" ? 0.5 : 1 }}
+      >
+        <Icon name="sparkle" size={12} />
+        {aiState === "streaming" ? "rewriting…" : "rewrite"}
+        <span className="kbd" style={{
+          borderColor: "color-mix(in oklch, var(--bg-0) 50%, transparent)",
+          color: "var(--bg-0)",
+          background: "color-mix(in oklch, var(--bg-0) 18%, var(--accent))",
+        }}>{mod}↵</span>
+      </button>
+    </div>
+  );
+}
+
+function FloatBtn({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) {
+  return (
+    <button
+      onClick={onClick}
+      className="btn btn-ghost mono"
+      style={{ height: 30, fontSize: 11.5, borderRadius: 7 }}
+      title={label}
+    >
+      <Icon name={icon} size={11} /> {label}
+    </button>
   );
 }

@@ -71,6 +71,15 @@ export const api = {
   deleteResume: (id: string) =>
     request<{ deleted: string }>(`/api/v1/resumes/${id}`, { method: "DELETE" }),
 
+  // ── Google Drive ──────────────────────────────────────────────
+  getDriveAuthUrl: () => request<{ url: string }>("/api/v1/drive/auth-url"),
+
+  saveToDrive: (access_token: string, filename: string, html: string) =>
+    request<{ file_id: string; name: string }>("/api/v1/drive/save", {
+      method: "POST",
+      body: JSON.stringify({ access_token, filename, html }),
+    }),
+
   rewriteResume: (id: string, opts: { section?: string; job_description?: string; instructions?: string }) =>
     request<AIRewriteResult>(`/api/v1/resumes/${id}/rewrite`, {
       method: "POST",

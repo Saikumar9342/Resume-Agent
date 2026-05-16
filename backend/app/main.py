@@ -138,6 +138,108 @@ async def extract_text(
     return {"text": text.strip()}
 
 
+@app.get("/api/v1/drive/auth-url")
+async def drive_auth_url(
+    _current_user: User = Depends(get_current_user),
+):
+    """Return a Google OAuth2 URL the frontend should redirect/popup to."""
+    import os
+    from urllib.parse import urlencode
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/drive/callback")
+    params = {
+        "client_id": client_id,
+        "redirect_uri": redirect_uri,
+        "response_type": "code",
+        "scope": "https://www.googleapis.com/auth/drive.file",
+        "access_type": "offline",
+        "prompt": "consent",
+    }
+    return {"url": f"https://accounts.google.com/o/oauth2/v2/auth?{urlencode(params)}"}
+
+
+@app.get("/api/v1/drive/callback")
+async def drive_callback(code: str):
+    """Exchange code for tokens — stores in session cookie or returns to frontend."""
+    import os, httpx
+    from fastapi.responses import HTMLResponse
+    client_id = os.getenv("GOOGLE_CLIENT_ID", "")
+    client_secret = os.getenv("GOOGLE_CLIENT_SECRET", "")
+    redirect_uri = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:8000/api/v1/drive/callback")
+    async with httpx.AsyncClient() as client:
+        r = await client.post("https://oauth2.googleapis.com/token", data={
+            "code": code,
+            "client_id": client_id,
+            "client_secret": client_secret,
+            "redirect_uri": redirect_uri,
+            "grant_type": "authorization_code",
+        })
+    tokens = r.json()
+    access_token = tokens.get("access_token", "")
+    # Pass token back to opener window via postMessage
+    return HTMLResponse(f"""
+    <html><body><script>
+      window.opener.postMessage({{ type: 'GDRIVE_TOKEN', token: '{access_token}' }}, '*');
+      window.close();
+    </script></body></html>
+    """)
+
+
+@app.post("/api/v1/drive/save")
+async def drive_save_resume(
+    payload: dict,
+    _current_user: User = Depends(get_current_user),
+):
+    """Upload a resume as a PDF-formatted HTML file to Google Drive Resumes/ folder."""
+    import httpx, json as _json
+    access_token = str(payload.get("access_token", ""))
+    filename = str(payload.get("filename", "resume.html"))
+    html_content = str(payload.get("html", ""))
+
+    if not access_token or not html_content:
+        raise HTTPException(status_code=400, detail="access_token and html required")
+
+    headers = {"Authorization": f"Bearer {access_token}"}
+
+    async with httpx.AsyncClient() as client:
+        # Find or create Resumes/ folder
+        q = "mimeType='application/vnd.google-apps.folder' and name='Resumes' and trashed=false"
+        search = await client.get(
+            "https://www.googleapis.com/drive/v3/files",
+            headers=headers, params={"q": q, "fields": "files(id,name)"},
+        )
+        files = search.json().get("files", [])
+        if files:
+            folder_id = files[0]["id"]
+        else:
+            create = await client.post(
+                "https://www.googleapis.com/drive/v3/files",
+                headers={**headers, "Content-Type": "application/json"},
+                content=_json.dumps({"name": "Resumes", "mimeType": "application/vnd.google-apps.folder"}),
+            )
+            folder_id = create.json()["id"]
+
+        # Upload the file using multipart
+        import io
+        boundary = "------ResumeAgentBoundary"
+        meta = _json.dumps({"name": filename, "parents": [folder_id]})
+        body = (
+            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
+            f"{meta}\r\n"
+            f"--{boundary}\r\nContent-Type: text/html\r\n\r\n"
+            f"{html_content}\r\n"
+            f"--{boundary}--"
+        ).encode()
+
+        upload = await client.post(
+            "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
+            headers={**headers, "Content-Type": f"multipart/related; boundary={boundary}"},
+            content=body,
+        )
+        result = upload.json()
+        return {"file_id": result.get("id"), "name": result.get("name"), "folder_id": folder_id}
+
+
 @app.websocket("/ws/resume/{resume_id}")
 async def websocket_endpoint(
     websocket: WebSocket,
