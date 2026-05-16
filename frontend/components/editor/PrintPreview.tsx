@@ -75,13 +75,24 @@ export function PrintPreview({ resume, title, template, resumeStyle, onClose }: 
     doc.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
       ${fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : ""}
       <style>
-        @page { margin: 12mm 0; size: A4; }
+        @page { margin: 0; size: A4; }
         html, body { margin: 0; padding: 0; }
         * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
         ul { padding-left: 16px; }
         li { list-style: disc; }
+        table.print-wrap { width: 100%; border-collapse: collapse; }
+        table.print-wrap thead td { height: 12mm; }
+        table.print-wrap tfoot td { height: 12mm; }
+        table.print-wrap thead, table.print-wrap tfoot { display: table-header-group; }
+        table.print-wrap tfoot { display: table-footer-group; }
       </style>
-    </head><body>${printRoot.innerHTML}</body></html>`);
+    </head><body>
+      <table class="print-wrap">
+        <thead><tr><td>&nbsp;</td></tr></thead>
+        <tfoot><tr><td>&nbsp;</td></tr></tfoot>
+        <tbody><tr><td>${printRoot.innerHTML}</td></tr></tbody>
+      </table>
+    </body></html>`);
     doc.close();
 
     iframe.onload = () => {
