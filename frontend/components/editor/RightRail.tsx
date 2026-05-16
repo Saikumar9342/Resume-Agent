@@ -2,11 +2,12 @@
 
 import { useRef, useEffect } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
-import type { ATSAnalysis, ATSCategoryScore, ATSCheckpoint, AIActivity, AIRewriteResult, DiffPatch, ResumeContent } from "@/types/resume";
+import type { ATSAnalysis, ATSCategoryScore, ATSCheckpoint, AIActivity, AIRewriteResult, DiffPatch, ResumeContent, ResumeStyle } from "@/types/resume";
 import { CoverLetterPane } from "./CoverLetterPane";
 import { InterviewPrepPane } from "./InterviewPrepPane";
+import { StylePane } from "./StylePane";
 
-type RailTab = "ai" | "ats" | "versions" | "cover" | "interview";
+type RailTab = "ai" | "ats" | "versions" | "cover" | "interview" | "style";
 
 interface RightRailProps {
   tab: RailTab;
@@ -31,6 +32,8 @@ interface RightRailProps {
   onATSFix?: () => void;
   onShowVersionDiff?: () => void;
   onExportPlainText?: () => void;
+  resumeStyle?: ResumeStyle;
+  onStyleChange?: (s: ResumeStyle) => void;
 }
 
 export interface VersionEntry {
@@ -49,6 +52,7 @@ export function RightRail({
   versions, onRestoreVersion, onShowVersionDiff,
   resumeId, resume, jd,
   onATSFix, onExportPlainText,
+  resumeStyle, onStyleChange,
 }: RightRailProps) {
   const diffCount = pendingResult?.diff_patches.length ?? 0;
   const atsScore = ats?.score ?? null;
@@ -59,24 +63,25 @@ export function RightRail({
       display: "flex", flexDirection: "column",
       minHeight: 0, overflow: "hidden",
     }}>
-      {/* Tab strip */}
+      {/* Tab strip — scrollable so all 6 tabs fit regardless of rail width */}
       <div style={{
         height: 34, display: "flex", alignItems: "center",
         borderBottom: "1px solid var(--line)",
         background: "var(--bg-0)",
         flexShrink: 0,
+        overflowX: "auto",
+        overflowY: "hidden",
+        scrollbarWidth: "none",
       }}>
-        <RailTabBtn id="ai" current={tab} setTab={setTab} icon="terminal" label="ai"
+        <RailTabBtn id="ai" current={tab} setTab={setTab} label="ai"
           badge={aiState === "review" ? diffCount : null} />
-        <RailTabBtn id="ats" current={tab} setTab={setTab} icon="target" label="ats"
+        <RailTabBtn id="ats" current={tab} setTab={setTab} label="ats"
           badge={atsScore !== null ? (atsScore >= 80 ? "OK" : "!") : null} />
-        <RailTabBtn id="versions" current={tab} setTab={setTab} icon="branch" label="versions" />
-        <RailTabBtn id="cover" current={tab} setTab={setTab} icon="doc" label="cover" />
-        <RailTabBtn id="interview" current={tab} setTab={setTab} icon="sparkle" label="prep" />
-        <div style={{ flex: 1 }} />
-        <button className="btn btn-ghost" style={{ width: 28, height: 28, justifyContent: "center", padding: 0, marginRight: 6 }}>
-          <Icon name="settings" size={13} />
-        </button>
+        <RailTabBtn id="versions" current={tab} setTab={setTab} label="hist" />
+        <RailTabBtn id="cover" current={tab} setTab={setTab} label="cover" />
+        <RailTabBtn id="interview" current={tab} setTab={setTab} label="prep" />
+        <RailTabBtn id="style" current={tab} setTab={setTab} label="style" />
+        <div style={{ flex: 1, minWidth: 4 }} />
       </div>
 
       {/* Content */}
@@ -98,14 +103,19 @@ export function RightRail({
         {tab === "versions" && <VersionsPane versions={versions} onRestore={onRestoreVersion} onShowDiff={onShowVersionDiff} />}
         {tab === "cover" && <CoverLetterPane resumeId={resumeId} resume={resume} jd={jd} />}
         {tab === "interview" && <InterviewPrepPane resumeId={resumeId} resume={resume} jd={jd} />}
+        {tab === "style" && (
+          resumeStyle && onStyleChange
+            ? <StylePane style={resumeStyle} onChange={onStyleChange} resumeRole={resume?.experience?.[0]?.title ?? resume?.contact?.name ?? ""} />
+            : <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--fg-4)", fontSize: 12 }} className="mono">open a resume first</div>
+        )}
       </div>
     </aside>
   );
 }
 
-function RailTabBtn({ id, current, setTab, icon, label, badge }: {
+function RailTabBtn({ id, current, setTab, label, badge }: {
   id: RailTab; current: RailTab; setTab: (t: RailTab) => void;
-  icon: string; label: string; badge?: number | string | null;
+  label: string; badge?: number | string | null;
 }) {
   const active = current === id;
   return (
@@ -115,19 +125,20 @@ function RailTabBtn({ id, current, setTab, icon, label, badge }: {
       style={{
         position: "relative",
         height: 34,
-        padding: "0 14px",
-        display: "flex", alignItems: "center", gap: 7,
+        padding: "0 11px",
+        display: "flex", alignItems: "center", gap: 5,
         background: "transparent",
-        color: active ? "var(--fg-0)" : "var(--fg-2)",
-        fontSize: 12,
+        color: active ? "var(--fg-0)" : "var(--fg-3)",
+        fontSize: 11,
         cursor: "pointer",
         border: 0,
+        whiteSpace: "nowrap",
+        flexShrink: 0,
       }}
     >
       {active && (
-        <span style={{ position: "absolute", left: 8, right: 8, bottom: -1, height: 1, background: "var(--accent)" }} />
+        <span style={{ position: "absolute", left: 6, right: 6, bottom: -1, height: 2, background: "var(--accent)", borderRadius: "1px 1px 0 0" }} />
       )}
-      <Icon name={icon} size={12} />
       {label}
       {badge != null && (
         <span className="mono" style={{

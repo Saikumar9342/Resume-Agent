@@ -26,10 +26,12 @@ import { VersionDiffViewer } from "@/components/editor/VersionDiffViewer";
 import { OnboardingWizard } from "@/components/editor/OnboardingWizard";
 import { exportATSPlainText } from "@/lib/exportPlainText";
 import type { DiffPatch } from "@/types/resume";
+import { DEFAULT_STYLE } from "@/types/resume";
+import type { ResumeStyle } from "@/types/resume";
 
 type Screen = "landing" | "editor";
 type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
-type RailTab = "ai" | "ats" | "versions" | "cover" | "interview";
+type RailTab = "ai" | "ats" | "versions" | "cover" | "interview" | "style";
 
 export function ResumeApp() {
   const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS, setResumeTitle } = useResumeStore();
@@ -55,6 +57,7 @@ export function ResumeApp() {
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [showVersionDiff, setShowVersionDiff] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
+  const [resumeStyle, setResumeStyle] = useState<ResumeStyle>({ ...DEFAULT_STYLE });
 
   // Persist last resumeId across reloads
   useEffect(() => {
@@ -707,6 +710,8 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
             onSectionRewrite={handleSectionRewrite}
             requestGhost={requestGhost}
             resumeId={resumeId}
+            resumeStyle={resumeStyle}
+            template={template}
           />
         )}
 
@@ -733,6 +738,8 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
           jd={jd}
           onATSFix={handleATSFix}
           onExportPlainText={resume?.content ? () => exportATSPlainText(resume.content, resume.title ?? "resume") : undefined}
+          resumeStyle={resumeStyle}
+          onStyleChange={setResumeStyle}
         />
       </div>
 
@@ -757,6 +764,7 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
         <TemplatePicker
           current={template}
           resume={resume.content}
+          resumeStyle={resumeStyle}
           onSelect={(t) => { setTemplate(t); setPrinting(true); }}
           onClose={() => setShowTemplatePicker(false)}
         />
@@ -767,6 +775,7 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
           resume={resume.content}
           title={resume.title}
           template={template}
+          resumeStyle={resumeStyle}
           onClose={() => { setPrinting(false); setShowTemplatePicker(false); }}
         />
       )}

@@ -65,6 +65,62 @@ Rules:
     return {"improved": improved}
 
 
+@app.post("/api/v1/style-advisor")
+async def style_advisor(
+    payload: dict,
+    _current_user: User = Depends(get_current_user),
+):
+    from langchain_core.messages import HumanMessage
+    from app.services.llm import llm_invoke
+    import json, re
+
+    prompt_text = str(payload.get("prompt", "")).strip()
+    role = str(payload.get("role", "")).strip()
+    industry = str(payload.get("industry", "")).strip()
+
+    context_parts = []
+    if role:      context_parts.append(f"Role: {role}")
+    if industry:  context_parts.append(f"Industry: {industry}")
+    if prompt_text: context_parts.append(f"User request: {prompt_text}")
+    context = "\n".join(context_parts) or "General professional resume"
+
+    system = f"""You are a resume design expert. Based on the context below, recommend the best visual style settings for a resume.
+
+Context:
+{context}
+
+Return a JSON object with EXACTLY these keys (no extra text, no markdown fences):
+{{
+  "fontFamily": one of ["Inter, sans-serif", "Georgia, 'Times New Roman', serif", "'Palatino Linotype', Palatino, Georgia, serif", "'Roboto', Arial, sans-serif", "'Merriweather', Georgia, serif", "'Lato', Arial, sans-serif", "'Source Sans 3', Arial, sans-serif", "'Playfair Display', Georgia, serif"],
+  "accentColor": a hex color string like "#1a56db",
+  "headingColor": a hex color string,
+  "bodyColor": a hex color string,
+  "fontSize": a number between 9 and 14,
+  "lineHeight": a number between 1.2 and 2.0,
+  "sectionSpacing": a number between 8 and 36,
+  "pageMargin": a number between 20 and 72,
+  "reasoning": a single sentence explaining why these choices suit the context
+}}
+
+Guidelines by industry:
+- Tech/startup: Inter font, blue accent, tight spacing, modern feel
+- Finance/law/consulting: Georgia or Palatino, dark navy/charcoal accent, generous spacing, formal
+- Creative/design: Playfair Display, vibrant accent color, relaxed spacing
+- Healthcare/academia: Merriweather or Lato, muted professional colors
+- General: Inter, blue accent, balanced spacing"""
+
+    raw = await llm_invoke([HumanMessage(content=system)])
+    # Extract JSON from response
+    match = re.search(r'\{[\s\S]*\}', raw)
+    if not match:
+        return {"error": "Could not parse style recommendation"}
+    try:
+        result = json.loads(match.group())
+        return result
+    except Exception:
+        return {"error": "Invalid JSON from model"}
+
+
 @app.post("/api/v1/extract-text")
 async def extract_text(
     file: UploadFile = File(...),

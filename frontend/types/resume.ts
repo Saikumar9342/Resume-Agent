@@ -104,6 +104,28 @@ export interface AIRewriteResult {
   reasoning: string;
 }
 
+export interface ResumeStyle {
+  fontFamily: string;       // e.g. "Inter", "Georgia", "Roboto Mono"
+  accentColor: string;      // hex
+  headingColor: string;     // hex
+  bodyColor: string;        // hex
+  fontSize: number;         // base px, e.g. 11
+  lineHeight: number;       // e.g. 1.55
+  sectionSpacing: number;   // px between sections, e.g. 18
+  pageMargin: number;       // px top/bottom page margin, e.g. 48
+}
+
+export const DEFAULT_STYLE: ResumeStyle = {
+  fontFamily: "Inter",
+  accentColor: "#1a56db",
+  headingColor: "#111111",
+  bodyColor: "#333333",
+  fontSize: 11,
+  lineHeight: 1.55,
+  sectionSpacing: 18,
+  pageMargin: 48,
+};
+
 export interface AIActivity {
   node: "extraction" | "analysis" | "optimization" | "validation";
   message: string;

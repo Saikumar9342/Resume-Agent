@@ -2,31 +2,42 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import type { ResumeContent } from "@/types/resume";
+import type { ResumeContent, ResumeStyle } from "@/types/resume";
 import type { TemplateId } from "./TemplatePicker";
 import {
   MinimalTemplate, ClassicTemplate, ModernTemplate,
   ExecutiveTemplate, CompactTemplate, CreativeTemplate,
 } from "./TemplatePicker";
 
+// Map font-family stack to a Google Fonts import URL
+const GOOGLE_FONT_URLS: Record<string, string> = {
+  "Inter, sans-serif": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=swap",
+  "'Roboto', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap",
+  "'Merriweather', Georgia, serif": "https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=swap",
+  "'Lato', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=swap",
+  "'Source Sans 3', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=swap",
+  "'Playfair Display', Georgia, serif": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&display=swap",
+};
+
 interface PrintPreviewProps {
   resume: ResumeContent;
   title: string;
   template: TemplateId;
+  resumeStyle?: ResumeStyle;
   onClose: () => void;
 }
 
-function TemplateRenderer({ resume, template }: { resume: ResumeContent; template: TemplateId }) {
-  if (template === "minimal") return <MinimalTemplate resume={resume} />;
-  if (template === "classic") return <ClassicTemplate resume={resume} />;
-  if (template === "modern") return <ModernTemplate resume={resume} />;
-  if (template === "executive") return <ExecutiveTemplate resume={resume} />;
-  if (template === "compact") return <CompactTemplate resume={resume} />;
-  if (template === "creative") return <CreativeTemplate resume={resume} />;
+function TemplateRenderer({ resume, template, resumeStyle }: { resume: ResumeContent; template: TemplateId; resumeStyle?: ResumeStyle }) {
+  if (template === "minimal") return <MinimalTemplate resume={resume} resumeStyle={resumeStyle} />;
+  if (template === "classic") return <ClassicTemplate resume={resume} resumeStyle={resumeStyle} />;
+  if (template === "modern") return <ModernTemplate resume={resume} resumeStyle={resumeStyle} />;
+  if (template === "executive") return <ExecutiveTemplate resume={resume} resumeStyle={resumeStyle} />;
+  if (template === "compact") return <CompactTemplate resume={resume} resumeStyle={resumeStyle} />;
+  if (template === "creative") return <CreativeTemplate resume={resume} resumeStyle={resumeStyle} />;
   return null;
 }
 
-export function PrintPreview({ resume, title, template, onClose }: PrintPreviewProps) {
+export function PrintPreview({ resume, title, template, resumeStyle, onClose }: PrintPreviewProps) {
   const [mounted, setMounted] = useState(false);
   const printRootRef = useRef<HTMLDivElement | null>(null);
 
@@ -67,7 +78,7 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
       {/* Print-only styles — hides the modal overlay, shows only resume content */}
       <style>{`
         @media print {
-          @page { margin: 12mm; size: A4; }
+          @page { margin: 10mm; size: A4; }
           body > *:not(#resume-print-root) { display: none !important; }
           #resume-print-root { display: block !important; position: static !important; }
           * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -76,6 +87,11 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
           #resume-print-root { display: none !important; }
         }
       `}</style>
+      {/* Inject Google Font for the chosen font family so PDF matches screen */}
+      {resumeStyle && GOOGLE_FONT_URLS[resumeStyle.fontFamily] && (
+        // eslint-disable-next-line @next/next/no-page-custom-font
+        <link rel="stylesheet" href={GOOGLE_FONT_URLS[resumeStyle.fontFamily]} />
+      )}
 
       {/* Modal overlay */}
       <div
@@ -129,14 +145,14 @@ export function PrintPreview({ resume, title, template, onClose }: PrintPreviewP
             boxShadow: "0 4px 32px rgba(0,0,0,0.4)",
             borderRadius: 2,
           }}>
-            <TemplateRenderer resume={resume} template={template} />
+            <TemplateRenderer resume={resume} template={template} resumeStyle={resumeStyle} />
           </div>
         </div>
       </div>
 
       {/* Hidden print target — rendered into body so @media print can show it */}
       {printRootRef.current && createPortal(
-        <TemplateRenderer resume={resume} template={template} />,
+        <TemplateRenderer resume={resume} template={template} resumeStyle={resumeStyle} />,
         printRootRef.current
       )}
     </>

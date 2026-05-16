@@ -4,7 +4,12 @@ import { useRef, useEffect, useState, useCallback } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useResumeStore } from "@/store/resumeStore";
 import { SectionChat } from "./SectionChat";
-import type { ResumeContent, ATSAnalysis, ResumeExperience } from "@/types/resume";
+import type { ResumeContent, ATSAnalysis, ResumeExperience, ResumeStyle } from "@/types/resume";
+import {
+  MinimalTemplate, ClassicTemplate, ModernTemplate,
+  ExecutiveTemplate, CompactTemplate, CreativeTemplate,
+} from "./TemplatePicker";
+import type { TemplateId } from "./TemplatePicker";
 
 type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
 
@@ -20,14 +25,18 @@ interface CanvasProps {
   onSectionRewrite?: (section: string) => void;
   requestGhost?: (context: string) => void;
   resumeId?: string | null;
+  resumeStyle?: ResumeStyle;
+  template?: TemplateId;
 }
 
 export function Canvas({
   resume, rawText, activeSection, heatmap, onToggleHeatmap,
   aiState, ats, onTextChange, onSectionRewrite, requestGhost, resumeId,
+  resumeStyle, template = "classic",
 }: CanvasProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { ai, updateContent } = useResumeStore();
+  const [canvasMode, setCanvasMode] = useState<"edit" | "preview">("edit");
 
   const scrollToSection = (sec: string) => {
     const container = scrollRef.current;
@@ -61,49 +70,71 @@ export function Canvas({
         background: "var(--bg-1)", borderBottom: "1px solid var(--line)",
         padding: "0 8px", gap: 4, flexShrink: 0,
       }}>
-        <CanvasTab active label="resume.md" />
+        <CanvasTab active={canvasMode === "edit"} label="resume.md" onClick={() => setCanvasMode("edit")} />
+        <CanvasTab active={canvasMode === "preview"} label="preview" onClick={() => setCanvasMode("preview")} />
         <div style={{ flex: 1 }} />
-        <button
-          onClick={onToggleHeatmap}
-          className="btn mono"
-          style={{
-            background: heatmap ? "var(--accent-soft)" : "transparent",
-            color: heatmap ? "var(--accent)" : "var(--fg-2)",
-            borderColor: heatmap ? "var(--accent-line)" : "transparent",
-            height: 24, fontSize: 11,
-          }}
-        >
-          <Icon name="flame" size={11} /> ats heatmap
-        </button>
-      </div>
-
-      <div ref={scrollRef} style={{
-        flex: 1, overflow: "auto",
-        display: "flex", flexDirection: "column",
-        alignItems: "center",
-        padding: "32px 36px 0",
-      }}>
-        {hasContent ? (
-          <ResumeArticle
-            resume={resume!}
-            heatmap={heatmap}
-            aiState={aiState}
-            streamingSection={ai.streamingSection}
-            sectionTokens={ai.sectionTokens}
-            ats={ats}
-            ghostText={ai.ghostText}
-            onUpdate={updateContent}
-            onSectionRewrite={onSectionRewrite}
-            requestGhost={requestGhost}
-            resumeId={resumeId ?? null}
-          />
-        ) : (
-          <RawTextFallback rawText={rawText} aiState={aiState} />
+        {canvasMode === "edit" && (
+          <button
+            onClick={onToggleHeatmap}
+            className="btn mono"
+            style={{
+              background: heatmap ? "var(--accent-soft)" : "transparent",
+              color: heatmap ? "var(--accent)" : "var(--fg-2)",
+              borderColor: heatmap ? "var(--accent-line)" : "transparent",
+              height: 24, fontSize: 11,
+            }}
+          >
+            <Icon name="flame" size={11} /> ats heatmap
+          </button>
         )}
-        <div style={{ height: heatmap && ats ? 80 : 48, flexShrink: 0 }} />
+        {canvasMode === "preview" && (
+          <span className="mono" style={{ fontSize: 10, color: "var(--fg-4)", paddingRight: 4 }}>
+            live preview · changes apply instantly
+          </span>
+        )}
       </div>
 
-      {heatmap && ats && (
+      {canvasMode === "preview" && hasContent ? (
+        /* Live template preview — reflects style customizer in real time */
+        <div style={{ flex: 1, overflow: "auto", background: "#e8e8e8", display: "flex", flexDirection: "column", alignItems: "center", padding: "24px 24px 48px" }}>
+          <div style={{ width: 794, background: "#fff", boxShadow: "0 2px 20px rgba(0,0,0,0.18)", borderRadius: 2 }}>
+            {template === "minimal"   && <MinimalTemplate   resume={resume!} resumeStyle={resumeStyle} />}
+            {template === "classic"   && <ClassicTemplate   resume={resume!} resumeStyle={resumeStyle} />}
+            {template === "modern"    && <ModernTemplate    resume={resume!} resumeStyle={resumeStyle} />}
+            {template === "executive" && <ExecutiveTemplate resume={resume!} resumeStyle={resumeStyle} />}
+            {template === "compact"   && <CompactTemplate   resume={resume!} resumeStyle={resumeStyle} />}
+            {template === "creative"  && <CreativeTemplate  resume={resume!} resumeStyle={resumeStyle} />}
+          </div>
+        </div>
+      ) : (
+        <div ref={scrollRef} style={{
+          flex: 1, overflow: "auto",
+          display: "flex", flexDirection: "column",
+          alignItems: "center",
+          padding: "16px 36px 0",
+        }}>
+          {hasContent ? (
+            <ResumeArticle
+              resume={resume!}
+              heatmap={heatmap}
+              aiState={aiState}
+              streamingSection={ai.streamingSection}
+              sectionTokens={ai.sectionTokens}
+              ats={ats}
+              ghostText={ai.ghostText}
+              onUpdate={updateContent}
+              onSectionRewrite={onSectionRewrite}
+              requestGhost={requestGhost}
+              resumeId={resumeId ?? null}
+            />
+          ) : (
+            <RawTextFallback rawText={rawText} aiState={aiState} />
+          )}
+          <div style={{ height: heatmap && ats ? 80 : 48, flexShrink: 0 }} />
+        </div>
+      )}
+
+      {canvasMode === "edit" && heatmap && ats && (
         <div style={{
           position: "absolute", bottom: 0, left: 0, right: 0,
           display: "flex", justifyContent: "center",
@@ -120,18 +151,21 @@ export function Canvas({
 
 /* ── helpers ── */
 
-function CanvasTab({ active, label }: { active?: boolean; label: string }) {
+function CanvasTab({ active, label, onClick }: { active?: boolean; label: string; onClick?: () => void }) {
   return (
-    <div style={{
-      position: "relative", height: 34, padding: "0 14px",
-      display: "flex", alignItems: "center", gap: 8,
-      background: active ? "var(--bg-0)" : "transparent",
-      borderRight: "1px solid var(--line)",
-      borderLeft: active ? "1px solid var(--line)" : "1px solid transparent",
-      marginBottom: -1, fontSize: 12,
-      color: active ? "var(--fg-0)" : "var(--fg-2)", cursor: "pointer",
-    }} className="mono">
-      <Icon name="doc" size={12} />
+    <div
+      onClick={onClick}
+      style={{
+        position: "relative", height: 34, padding: "0 12px",
+        display: "flex", alignItems: "center", gap: 6,
+        background: active ? "var(--bg-0)" : "transparent",
+        borderRight: "1px solid var(--line)",
+        borderLeft: active ? "1px solid var(--line)" : "1px solid transparent",
+        marginBottom: -1, fontSize: 12,
+        color: active ? "var(--fg-0)" : "var(--fg-3)", cursor: "pointer",
+      }} className="mono"
+    >
+      {label === "resume.md" && <Icon name="doc" size={12} />}
       {label}
       {active && <span style={{ position: "absolute", left: 0, right: 0, top: -1, height: 2, background: "var(--accent)" }} />}
     </div>
