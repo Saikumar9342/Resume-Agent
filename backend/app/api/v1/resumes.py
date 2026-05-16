@@ -303,6 +303,139 @@ Instructions:
     return {"cover_letter": text, "name": name, "company": company, "role": role}
 
 
+@router.post("/resumes/{resume_id}/section-chat")
+async def section_chat(
+    resume_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    section = str(payload.get("section", ""))
+    instruction = str(payload.get("instruction", ""))
+    history = payload.get("history", [])
+
+    content = resume.content or {}
+    section_data = content.get(section, None)
+
+    history_text = ""
+    if history:
+        for msg in history[-4:]:  # last 4 messages for context
+            role = "User" if msg.get("role") == "user" else "Assistant"
+            history_text += f"{role}: {msg.get('text', '')}\n"
+
+    prompt = f"""You are an AI assistant helping improve the "{section}" section of a resume.
+
+Current {section} content:
+{json.dumps(section_data, indent=2) if section_data else "Empty"}
+
+{f"Conversation so far:{chr(10)}{history_text}" if history_text else ""}
+User: {instruction}
+
+Instructions:
+- Give a helpful, specific response about improving the {section} section
+- If the user is asking you to rewrite/improve it, provide the improved version as JSON in a code block
+- If just answering a question, respond conversationally (2-3 sentences max)
+- Be direct and specific — reference actual content from the section when possible
+- If you provide improved content, format it as valid JSON matching the original structure"""
+
+    from langchain_core.messages import HumanMessage
+    reply = await llm_invoke([HumanMessage(content=prompt)])
+
+    # Try to extract JSON from reply if AI rewrote the section
+    improved_section = None
+    import re
+    json_match = re.search(r"```(?:json)?\s*(\{[\s\S]+?\}|\[[\s\S]+?\])\s*```", reply)
+    if json_match:
+        try:
+            improved_section = json.loads(json_match.group(1))
+            # Strip the JSON block from the reply text
+            reply = reply[:json_match.start()].strip() + "\n\n✓ Applied to your resume." + reply[json_match.end():].strip()
+        except json.JSONDecodeError:
+            pass
+
+    return {"reply": reply.strip(), "improved_section": improved_section}
+
+
+@router.post("/resumes/{resume_id}/interview-prep")
+async def generate_interview_prep(
+    resume_id: str,
+    payload: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    result = await db.execute(
+        select(Resume).where(Resume.id == resume_id, Resume.user_id == current_user.id)
+    )
+    resume = result.scalar_one_or_none()
+    if not resume:
+        raise HTTPException(status_code=404, detail="Resume not found")
+
+    job_description = payload.get("job_description", "")
+    company = payload.get("company", "")
+    role = payload.get("role", "")
+    focus = payload.get("focus", "all")  # behavioral | technical | situational | all
+
+    content = resume.content or {}
+    contact = content.get("contact", {})
+    name = contact.get("name", "the candidate")
+    summary = content.get("summary", "")
+    experience = content.get("experience", [])
+    skills = content.get("skills", {})
+    technical_skills = skills.get("technical", [])
+    projects = content.get("projects", [])
+
+    exp_text = "\n".join([
+        f"- {e.get('title')} at {e.get('company')}: " + "; ".join(e.get("bullets", [])[:3])
+        for e in experience[:4]
+    ])
+
+    proj_text = "\n".join([
+        f"- {p.get('name')}: {p.get('description', '')}"
+        for p in projects[:3]
+    ])
+
+    focus_instruction = {
+        "behavioral": "Generate ONLY behavioral questions (STAR method: Situation, Task, Action, Result). Prefix each with [BEHAVIORAL].",
+        "technical": "Generate ONLY technical questions testing specific skills from the resume. Prefix each with [TECHNICAL].",
+        "situational": "Generate ONLY situational/hypothetical scenario questions. Prefix each with [SITUATIONAL].",
+        "all": "Mix behavioral [BEHAVIORAL], technical [TECHNICAL], and situational [SITUATIONAL] questions. Prefix each appropriately.",
+    }.get(focus, "Mix all question types with appropriate prefixes.")
+
+    prompt = f"""Generate 10 targeted interview questions for {name} interviewing for {role or "this role"}{f" at {company}" if company else ""}.
+
+Candidate profile:
+Summary: {summary}
+Experience:
+{exp_text}
+Technical skills: {", ".join(technical_skills[:15])}
+Projects:
+{proj_text}
+
+Job description:
+{job_description[:1500] if job_description else "Not provided — base questions on the resume profile."}
+
+Instructions:
+{focus_instruction}
+- For each question also provide: a 2-3 sentence HINT on how to answer it using this specific resume's content
+- Format each as:
+  Q: [question text]
+  HINT: [answer guidance using their specific experience]
+- Make questions progressively harder (1-3 easy, 4-7 medium, 8-10 challenging)
+- Reference specific companies, projects, or skills from the resume where possible
+- Do NOT ask generic questions — every question should be tailored to this resume"""
+
+    from langchain_core.messages import HumanMessage
+    text = await llm_invoke([HumanMessage(content=prompt)])
+    return {"questions": text, "name": name, "role": role, "company": company, "focus": focus}
+
+
 @router.post("/resumes/{resume_id}/share")
 async def create_share_link(
     resume_id: str,

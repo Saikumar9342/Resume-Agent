@@ -4,8 +4,9 @@ import { useRef, useEffect } from "react";
 import { Icon, Dot } from "@/components/ui/Icon";
 import type { ATSAnalysis, ATSCategoryScore, ATSCheckpoint, AIActivity, AIRewriteResult, DiffPatch, ResumeContent } from "@/types/resume";
 import { CoverLetterPane } from "./CoverLetterPane";
+import { InterviewPrepPane } from "./InterviewPrepPane";
 
-type RailTab = "ai" | "ats" | "versions" | "cover";
+type RailTab = "ai" | "ats" | "versions" | "cover" | "interview";
 
 interface RightRailProps {
   tab: RailTab;
@@ -28,6 +29,8 @@ interface RightRailProps {
   resume: ResumeContent | null;
   jd: string;
   onATSFix?: () => void;
+  onShowVersionDiff?: () => void;
+  onExportPlainText?: () => void;
 }
 
 export interface VersionEntry {
@@ -43,9 +46,9 @@ export function RightRail({
   tab, setTab, aiState, aiError, activities, pendingResult, reasoning, activeModel,
   onAcceptAll, onRejectAll, onAcceptPatch,
   ats, heatmap, setHeatmap,
-  versions, onRestoreVersion,
+  versions, onRestoreVersion, onShowVersionDiff,
   resumeId, resume, jd,
-  onATSFix,
+  onATSFix, onExportPlainText,
 }: RightRailProps) {
   const diffCount = pendingResult?.diff_patches.length ?? 0;
   const atsScore = ats?.score ?? null;
@@ -69,6 +72,7 @@ export function RightRail({
           badge={atsScore !== null ? (atsScore >= 80 ? "OK" : "!") : null} />
         <RailTabBtn id="versions" current={tab} setTab={setTab} icon="branch" label="versions" />
         <RailTabBtn id="cover" current={tab} setTab={setTab} icon="doc" label="cover" />
+        <RailTabBtn id="interview" current={tab} setTab={setTab} icon="sparkle" label="prep" />
         <div style={{ flex: 1 }} />
         <button className="btn btn-ghost" style={{ width: 28, height: 28, justifyContent: "center", padding: 0, marginRight: 6 }}>
           <Icon name="settings" size={13} />
@@ -90,9 +94,10 @@ export function RightRail({
             onAcceptPatch={onAcceptPatch}
           />
         )}
-        {tab === "ats" && <ATSPane ats={ats} heatmap={heatmap} setHeatmap={setHeatmap} onFix={onATSFix} aiState={aiState} />}
-        {tab === "versions" && <VersionsPane versions={versions} onRestore={onRestoreVersion} />}
+        {tab === "ats" && <ATSPane ats={ats} heatmap={heatmap} setHeatmap={setHeatmap} onFix={onATSFix} aiState={aiState} onExportPlainText={onExportPlainText} />}
+        {tab === "versions" && <VersionsPane versions={versions} onRestore={onRestoreVersion} onShowDiff={onShowVersionDiff} />}
         {tab === "cover" && <CoverLetterPane resumeId={resumeId} resume={resume} jd={jd} />}
+        {tab === "interview" && <InterviewPrepPane resumeId={resumeId} resume={resume} jd={jd} />}
       </div>
     </aside>
   );
@@ -409,9 +414,9 @@ function DiffCard({ patch, index, onAccept }: { patch: DiffPatch; index: number;
 }
 
 /* ── ATS Pane ── */
-function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
+function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState, onExportPlainText }: {
   ats: ATSAnalysis | null; heatmap: boolean; setHeatmap: (v: boolean) => void;
-  onFix?: () => void; aiState?: string;
+  onFix?: () => void; aiState?: string; onExportPlainText?: () => void;
 }) {
   if (!ats) {
     return (
@@ -472,6 +477,15 @@ function ATSPane({ ats, heatmap, setHeatmap, onFix, aiState }: {
           {heatmap ? "hide heatmap" : "show heatmap on resume"}
           <span className="kbd">Ctrl+H</span>
         </button>
+        {onExportPlainText && (
+          <button
+            onClick={onExportPlainText}
+            className="btn mono"
+            style={{ marginTop: 6, width: "100%", justifyContent: "center", height: 28, fontSize: 11, color: "var(--fg-2)" }}
+          >
+            <Icon name="download" size={11} /> export ATS-safe .txt
+          </button>
+        )}
       </div>
 
       {/* category breakdown */}
@@ -665,7 +679,7 @@ function ATSScoreRing({ score }: { score: number }) {
 }
 
 /* ── Versions Pane ── */
-function VersionsPane({ versions, onRestore }: { versions: VersionEntry[]; onRestore: (id: string) => void }) {
+function VersionsPane({ versions, onRestore, onShowDiff }: { versions: VersionEntry[]; onRestore: (id: string) => void; onShowDiff?: () => void }) {
   if (versions.length === 0) {
     return (
       <EmptyState
@@ -678,7 +692,14 @@ function VersionsPane({ versions, onRestore }: { versions: VersionEntry[]; onRes
   return (
     <div style={{ overflow: "auto", flex: 1 }}>
       <div style={{ padding: "14px 16px", borderBottom: "1px solid var(--line)" }}>
-        <SectionLabel>git log · resume</SectionLabel>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <SectionLabel>git log · resume</SectionLabel>
+          {onShowDiff && versions.length >= 2 && (
+            <button onClick={onShowDiff} className="btn btn-ghost mono" style={{ height: 22, fontSize: 10, padding: "0 8px" }}>
+              <Icon name="branch" size={10} /> diff viewer
+            </button>
+          )}
+        </div>
         <div style={{ marginTop: 6, fontSize: 12, color: "var(--fg-2)", lineHeight: 1.5 }}>
           Every accept creates a snapshot. Restore inline.
         </div>

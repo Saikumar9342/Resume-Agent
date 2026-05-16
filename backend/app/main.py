@@ -38,6 +38,33 @@ app.include_router(ats.router, prefix="/api/v1", tags=["ats"])
 app.include_router(share.router, tags=["share"])
 
 
+@app.post("/api/v1/bullet-rewrite")
+async def bullet_rewrite(
+    payload: dict,
+    _current_user: User = Depends(get_current_user),
+):
+    from langchain_core.messages import HumanMessage
+    from app.services.llm import llm_invoke
+    bullet = str(payload.get("bullet", "")).strip()
+    instruction = str(payload.get("instruction", "Improve this resume bullet.")).strip()
+    if not bullet:
+        return {"improved": ""}
+    prompt = f"""You are improving a single resume bullet point.
+
+Original bullet: {bullet}
+
+Task: {instruction}
+
+Rules:
+- Return ONLY the improved bullet text — no explanation, no quotes, no markdown
+- Preserve the core achievement; do not invent new facts
+- Keep it to one sentence"""
+    improved = await llm_invoke([HumanMessage(content=prompt)])
+    # Strip quotes/markdown the model might add
+    improved = improved.strip().strip('"').strip("'").lstrip("- ").strip()
+    return {"improved": improved}
+
+
 @app.post("/api/v1/extract-text")
 async def extract_text(
     file: UploadFile = File(...),

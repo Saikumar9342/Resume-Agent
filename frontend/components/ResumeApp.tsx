@@ -21,11 +21,15 @@ import { CommandPalette } from "@/components/editor/CommandPalette";
 import { PrintPreview } from "@/components/editor/PrintPreview";
 import { TemplatePicker } from "@/components/editor/TemplatePicker";
 import type { TemplateId } from "@/components/editor/TemplatePicker";
+import { ShortcutOverlay } from "@/components/editor/ShortcutOverlay";
+import { VersionDiffViewer } from "@/components/editor/VersionDiffViewer";
+import { OnboardingWizard } from "@/components/editor/OnboardingWizard";
+import { exportATSPlainText } from "@/lib/exportPlainText";
 import type { DiffPatch } from "@/types/resume";
 
 type Screen = "landing" | "editor";
 type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
-type RailTab = "ai" | "ats" | "versions" | "cover";
+type RailTab = "ai" | "ats" | "versions" | "cover" | "interview";
 
 export function ResumeApp() {
   const { resume, ai, editor, ats, setResume, markDirty, acceptAISuggestion, rejectAISuggestion, acceptPatch, setATS, setResumeTitle } = useResumeStore();
@@ -48,16 +52,21 @@ export function ResumeApp() {
   const [printing, setPrinting] = useState(false);
   const [template, setTemplate] = useState<TemplateId>("classic");
   const [showTemplatePicker, setShowTemplatePicker] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [showVersionDiff, setShowVersionDiff] = useState(false);
+  const [showOnboarding, setShowOnboarding] = useState(false);
 
   // Persist last resumeId across reloads
   useEffect(() => {
     if (resumeId) localStorage.setItem("last_resume_id", resumeId);
   }, [resumeId]);
 
-  // On mount: restore last session if authenticated
+  // On mount: restore last session if authenticated; show onboarding for new users
   useEffect(() => {
     if (!isAuthenticated()) { setRestoring(false); return; }
     const saved = localStorage.getItem("last_resume_id");
+    const onboarded = localStorage.getItem("resume-agent-onboarded");
+    if (!onboarded) setShowOnboarding(true);
     if (!saved) { setRestoring(false); return; }
     api.getResume(saved)
       .then(r => {
@@ -115,7 +124,8 @@ export function ResumeApp() {
       if (mod && e.key.toLowerCase() === "k") { e.preventDefault(); setPaletteOpen(o => !o); }
       else if (mod && e.key === "Enter") { e.preventDefault(); handleAIRewrite(); }
       else if (mod && e.key.toLowerCase() === "h") { e.preventDefault(); setHeatmap(v => !v); }
-      else if (e.key === "Escape") setPaletteOpen(false);
+      else if (e.key === "?" && !mod && (e.target as HTMLElement).tagName !== "INPUT" && (e.target as HTMLElement).tagName !== "TEXTAREA") { e.preventDefault(); setShowShortcuts(v => !v); }
+      else if (e.key === "Escape") { setPaletteOpen(false); setShowShortcuts(false); }
     };
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
@@ -351,6 +361,34 @@ export function ResumeApp() {
     acceptPatch(patch);
   };
 
+  const handleAutoAddKeywords = useCallback((keywords: string[]) => {
+    if (!resume?.content) return;
+    const current = resume.content.skills?.technical ?? [];
+    const toAdd = keywords.filter(k => !current.map(s => s.toLowerCase()).includes(k.toLowerCase()));
+    if (!toAdd.length) return;
+    const updated = { ...resume.content, skills: { ...resume.content.skills, technical: [...current, ...toAdd] } };
+    useResumeStore.getState().updateContent(updated);
+  }, [resume?.content]);
+
+  const handleVersionRestore = async (version: import("@/lib/db").ResumeVersion) => {
+    if (!resumeId) return;
+    setShowVersionDiff(false);
+    await api.updateResume(resumeId, { content: version.content });
+    const updated = await api.getResume(resumeId);
+    setResume(updated);
+  };
+
+  const handleOnboardingComplete = (choice: "upload" | "scratch" | "sample") => {
+    localStorage.setItem("resume-agent-onboarded", "1");
+    setShowOnboarding(false);
+    if (choice === "sample") {
+      const SAMPLE = `John Smith\njohn.smith@email.com | +1 (555) 123-4567 | San Francisco, CA\nlinkedin.com/in/johnsmith | github.com/johnsmith\n\nSUMMARY\nSoftware Engineer with 4+ years of experience building scalable web applications.\n\nEXPERIENCE\nAcme Corp — Senior Software Engineer | Jan 2022 – Present\n• Led migration to microservices, reducing deployment time by 60%\n• Built real-time dashboard used by 10,000+ daily active users\n\nEDUCATION\nUniversity of California, Berkeley — B.S. Computer Science | 2020\n\nSKILLS\nJavaScript, TypeScript, React, Node.js, Python, PostgreSQL, Docker, AWS`;
+      setRawText(SAMPLE);
+      handleAIRewrite();
+    }
+    // "upload" and "scratch" just close the wizard; user interacts normally
+  };
+
   const handleCommand = useCallback((id: string) => {
     setPaletteOpen(false);
     if (id === "ai.rewrite") handleAIRewrite();
@@ -429,6 +467,7 @@ export function ResumeApp() {
         jd={jd}
         setJD={setJD}
         resume={resume?.content ?? null}
+        onAutoAddKeywords={handleAutoAddKeywords}
       />
 
       {/* 3-pane */}
@@ -557,7 +596,6 @@ export function ResumeApp() {
                 <div style={{
                   border: "1px solid var(--line)", borderRadius: 10,
                   background: "var(--bg-1)", overflow: "hidden",
-                  focusWithin: "border-color: var(--accent)",
                 }}>
                   <textarea
                     value={rawText}
@@ -668,6 +706,7 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
             onTextChange={text => { setRawText(text); markDirty(true); }}
             onSectionRewrite={handleSectionRewrite}
             requestGhost={requestGhost}
+            resumeId={resumeId}
           />
         )}
 
@@ -688,10 +727,12 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
           setHeatmap={setHeatmap}
           versions={versions}
           onRestoreVersion={handleRestoreVersion}
+          onShowVersionDiff={resumeId ? () => setShowVersionDiff(true) : undefined}
           resumeId={resumeId}
           resume={resume?.content ?? null}
           jd={jd}
           onATSFix={handleATSFix}
+          onExportPlainText={resume?.content ? () => exportATSPlainText(resume.content, resume.title ?? "resume") : undefined}
         />
       </div>
 
@@ -727,6 +768,25 @@ A developer productivity dashboard with CI/CD metrics, log streaming, and team i
           title={resume.title}
           template={template}
           onClose={() => { setPrinting(false); setShowTemplatePicker(false); }}
+        />
+      )}
+
+      {showShortcuts && (
+        <ShortcutOverlay onClose={() => setShowShortcuts(false)} />
+      )}
+
+      {showVersionDiff && resumeId && (
+        <VersionDiffViewer
+          resumeId={resumeId}
+          onClose={() => setShowVersionDiff(false)}
+          onRestore={handleVersionRestore}
+        />
+      )}
+
+      {showOnboarding && (
+        <OnboardingWizard
+          onComplete={handleOnboardingComplete}
+          onSkip={() => { localStorage.setItem("resume-agent-onboarded", "1"); setShowOnboarding(false); }}
         />
       )}
     </div>

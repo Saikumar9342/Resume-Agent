@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState, useCallback } from "react";
 import { Icon } from "@/components/ui/Icon";
 import { useResumeStore } from "@/store/resumeStore";
+import { SectionChat } from "./SectionChat";
 import type { ResumeContent, ATSAnalysis, ResumeExperience } from "@/types/resume";
 
 type SectionId = "contact" | "summary" | "experience" | "education" | "skills" | "projects" | "certifications";
@@ -18,11 +19,12 @@ interface CanvasProps {
   onTextChange: (text: string) => void;
   onSectionRewrite?: (section: string) => void;
   requestGhost?: (context: string) => void;
+  resumeId?: string | null;
 }
 
 export function Canvas({
   resume, rawText, activeSection, heatmap, onToggleHeatmap,
-  aiState, ats, onTextChange, onSectionRewrite, requestGhost,
+  aiState, ats, onTextChange, onSectionRewrite, requestGhost, resumeId,
 }: CanvasProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const { ai, updateContent } = useResumeStore();
@@ -93,6 +95,7 @@ export function Canvas({
             onUpdate={updateContent}
             onSectionRewrite={onSectionRewrite}
             requestGhost={requestGhost}
+            resumeId={resumeId ?? null}
           />
         ) : (
           <RawTextFallback rawText={rawText} aiState={aiState} />
@@ -147,9 +150,10 @@ function bulletHeat(bullet: string, missingKw: string[]): "red" | "amber" | "gre
   return "red";
 }
 
-function SectionHeader({ label, count, onRewrite, isStreaming }: {
+function SectionHeader({ label, count, onRewrite, isStreaming, onChat }: {
   label: string; count?: string;
   onRewrite?: () => void; isStreaming?: boolean;
+  onChat?: (e: React.MouseEvent) => void;
 }) {
   const [hover, setHover] = useState(false);
   return (
@@ -162,6 +166,16 @@ function SectionHeader({ label, count, onRewrite, isStreaming }: {
       <span className="mono" style={{ fontSize: 11, textTransform: "uppercase", letterSpacing: "0.14em", color: "var(--accent)", fontWeight: 600 }}>{label}</span>
       <span style={{ flex: 1, height: 1, background: "var(--line)" }} />
       {count && <span className="mono" style={{ color: "var(--fg-3)", fontSize: 10.5 }}>{count}</span>}
+      {hover && onChat && !isStreaming && (
+        <button
+          onClick={onChat}
+          className="btn mono"
+          style={{ height: 20, fontSize: 10, padding: "0 7px", background: "var(--bg-2)", color: "var(--fg-2)", borderColor: "var(--line)" }}
+          title="Ask AI about this section"
+        >
+          <Icon name="sparkle" size={9} /> chat
+        </button>
+      )}
       {onRewrite && (hover || isStreaming) && (
         <button
           onClick={onRewrite}
@@ -254,6 +268,64 @@ function EditableText({
   );
 }
 
+/* ── Bullet AI quick-actions menu ── */
+const BULLET_ACTIONS = [
+  { id: "metric", label: "+ metric", instruction: "Add a specific number, percentage, or quantifiable result to this bullet. Keep everything else the same. Return only the improved bullet." },
+  { id: "action", label: "action verb", instruction: "Start this bullet with a strong action verb (Led, Built, Reduced, Delivered, Improved, etc.). Return only the improved bullet." },
+  { id: "star", label: "STAR", instruction: "Rewrite this bullet using the STAR method (Situation, Task, Action, Result) in one concise sentence. Return only the improved bullet." },
+  { id: "shorter", label: "shorter", instruction: "Make this bullet more concise — max 15 words. Preserve the key achievement. Return only the improved bullet." },
+];
+
+function BulletAIMenu({ bullet, onApply }: { bullet: string; onApply: (improved: string) => void }) {
+  const [loading, setLoading] = useState<string | null>(null);
+
+  const run = async (actionId: string, instruction: string) => {
+    setLoading(actionId);
+    try {
+      const token = JSON.parse(localStorage.getItem("resume-agent-auth") ?? "{}").state?.token ?? "";
+      const res = await fetch(
+        `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/v1/bullet-rewrite`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+          body: JSON.stringify({ bullet, instruction }),
+        }
+      );
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      if (data.improved) onApply(data.improved);
+    } catch {
+      // silent fail — user keeps original
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div style={{ display: "flex", gap: 4, marginLeft: 8 }}>
+      {BULLET_ACTIONS.map(a => (
+        <button
+          key={a.id}
+          onClick={e => { e.stopPropagation(); run(a.id, a.instruction); }}
+          disabled={!!loading}
+          className="mono"
+          style={{
+            height: 18, fontSize: 9.5, padding: "0 6px", borderRadius: 4,
+            background: loading === a.id ? "var(--accent-soft)" : "var(--bg-3)",
+            color: loading === a.id ? "var(--accent)" : "var(--fg-3)",
+            border: "1px solid var(--line)", cursor: "pointer",
+            display: "flex", alignItems: "center", gap: 3,
+            transition: "background 0.15s",
+          }}
+          title={a.instruction}
+        >
+          {loading === a.id ? "…" : a.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 /* ── Editable bullet with ghost text ── */
 function EditableBullet({
   value, onSave, onDelete, onAdd, heat, heatmap, requestGhost, ghostText,
@@ -265,6 +337,7 @@ function EditableBullet({
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(value);
   const [showGhost, setShowGhost] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
   const ref = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => { setDraft(value); }, [value]);
@@ -364,10 +437,19 @@ function EditableBullet({
       style={liStyle}
       onClick={() => setEditing(true)}
       className="bullet-hover"
-      title="Click to edit · Del to remove"
+      onMouseEnter={() => setShowMenu(true)}
+      onMouseLeave={() => setShowMenu(false)}
+      title="Click to edit"
     >
       <span className="mono" style={{ position: "absolute", left: heatmap ? 6 : 0, top: heatmap ? 8 : 5, color: heat ? `var(--${heat})` : "var(--fg-3)", fontSize: 10 }}>›</span>
-      <span style={{ cursor: "text" }}>{value}</span>
+      <div style={{ display: "flex", alignItems: "flex-start", gap: 0, paddingRight: 20 }}>
+        <span style={{ cursor: "text", flex: 1 }}>{value}</span>
+        {showMenu && (
+          <div onClick={e => e.stopPropagation()} style={{ flexShrink: 0, paddingTop: 1 }}>
+            <BulletAIMenu bullet={value} onApply={improved => { onSave(improved); }} />
+          </div>
+        )}
+      </div>
       <button
         onClick={e => { e.stopPropagation(); onDelete(); }}
         className="bullet-del mono"
@@ -393,6 +475,7 @@ interface ArticleProps {
   onUpdate: (c: ResumeContent) => void;
   onSectionRewrite?: (section: string) => void;
   requestGhost?: (context: string) => void;
+  resumeId: string | null;
 }
 
 function sectionStyle(sec: string, streamingSection: string | null, isStreaming: boolean): React.CSSProperties {
@@ -415,9 +498,16 @@ function StreamingText({ text }: { text: string }) {
   );
 }
 
-function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionTokens, ats, ghostText, onUpdate, onSectionRewrite, requestGhost }: ArticleProps) {
+function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionTokens, ats, ghostText, onUpdate, onSectionRewrite, requestGhost, resumeId }: ArticleProps) {
   const isStreaming = aiState === "streaming";
   const missingKw = ats?.missing_keywords ?? [];
+  const [activeChat, setActiveChat] = useState<{ section: string; rect: DOMRect } | null>(null);
+
+  const openChat = (section: string, e: React.MouseEvent) => {
+    if (!resumeId) return;
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    setActiveChat({ section, rect });
+  };
 
   const patch = useCallback((updater: (c: ResumeContent) => ResumeContent) => {
     onUpdate(updater(resume));
@@ -460,6 +550,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
         <div data-sec="summary" style={sectionStyle("summary", streamingSection, isStreaming)}>
           <SectionHeader
             label="Summary"
+            onChat={resumeId ? (e) => openChat("summary", e) : undefined}
             onRewrite={() => onSectionRewrite?.("summary")}
             isStreaming={streamingSection === "summary" && isStreaming}
           />
@@ -484,6 +575,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
           <SectionHeader
             label="Experience"
             count={resume.experience ? `${resume.experience.length} roles` : undefined}
+            onChat={resumeId ? (e) => openChat("experience", e) : undefined}
             onRewrite={() => onSectionRewrite?.("experience")}
             isStreaming={streamingSection === "experience" && isStreaming}
           />
@@ -606,7 +698,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
       {/* ── Education ── */}
       {resume.education && resume.education.length > 0 && (
         <div data-sec="education" style={sectionStyle("education", streamingSection, isStreaming)}>
-          <SectionHeader label="Education" onRewrite={() => onSectionRewrite?.("education")} isStreaming={streamingSection === "education" && isStreaming} />
+          <SectionHeader label="Education" onChat={resumeId ? (e) => openChat("education", e) : undefined} onRewrite={() => onSectionRewrite?.("education")} isStreaming={streamingSection === "education" && isStreaming} />
           <div style={{ marginBottom: 28 }}>
             {resume.education.map((edu, i) => (
               <div key={i} style={{ display: "flex", justifyContent: "space-between", fontSize: 13, color: "var(--fg-1)", padding: "4px 0", gap: 12 }}>
@@ -647,7 +739,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
       {/* ── Skills ── */}
       {(resume.skills || streamingSection === "skills") && (
         <div data-sec="skills" style={sectionStyle("skills", streamingSection, isStreaming)}>
-          <SectionHeader label="Skills" onRewrite={() => onSectionRewrite?.("skills")} isStreaming={streamingSection === "skills" && isStreaming} />
+          <SectionHeader label="Skills" onChat={resumeId ? (e) => openChat("skills", e) : undefined} onRewrite={() => onSectionRewrite?.("skills")} isStreaming={streamingSection === "skills" && isStreaming} />
           <div style={{ marginBottom: 28 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 6 }}>
               {resume.skills?.technical?.map((s, si) => (
@@ -723,7 +815,7 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
       {/* ── Projects ── */}
       {((resume.projects && resume.projects.length > 0) || streamingSection === "projects") && (
         <div data-sec="projects" style={sectionStyle("projects", streamingSection, isStreaming)}>
-          <SectionHeader label="Projects" onRewrite={() => onSectionRewrite?.("projects")} isStreaming={streamingSection === "projects" && isStreaming} />
+          <SectionHeader label="Projects" onChat={resumeId ? (e) => openChat("projects", e) : undefined} onRewrite={() => onSectionRewrite?.("projects")} isStreaming={streamingSection === "projects" && isStreaming} />
           <div>
             {resume.projects?.map((p, pi) => (
               <div key={pi} style={{ fontSize: 13, lineHeight: 1.5, color: "var(--fg-1)", marginBottom: 10 }}>
@@ -755,6 +847,20 @@ function ResumeArticle({ resume, heatmap, aiState, streamingSection, sectionToke
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Section AI Chat ── */}
+      {activeChat && resumeId && (
+        <SectionChat
+          section={activeChat.section}
+          resumeId={resumeId}
+          anchorRect={activeChat.rect}
+          onClose={() => setActiveChat(null)}
+          onApply={(section, improved) => {
+            patch(c => ({ ...c, [section]: improved }));
+            setActiveChat(null);
+          }}
+        />
       )}
     </article>
   );
