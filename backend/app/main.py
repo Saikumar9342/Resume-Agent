@@ -191,24 +191,30 @@ async def drive_save_resume(
     payload: dict,
     _current_user: User = Depends(get_current_user),
 ):
-    """Upload a resume as a PDF-formatted HTML file to Google Drive Resumes/ folder."""
-    import httpx, json as _json
+    """Upload a resume PDF (base64) to Google Drive Resumes/ folder as a native PDF file."""
+    import httpx, json as _json, base64
     access_token = str(payload.get("access_token", ""))
-    filename = str(payload.get("filename", "resume.html"))
-    html_content = str(payload.get("html", ""))
+    filename = str(payload.get("filename", "resume.pdf"))
+    pdf_b64 = str(payload.get("pdf_base64", ""))
 
-    if not access_token or not html_content:
-        raise HTTPException(status_code=400, detail="access_token and html required")
+    if not access_token or not pdf_b64:
+        raise HTTPException(status_code=400, detail="access_token and pdf_base64 required")
+
+    try:
+        pdf_bytes = base64.b64decode(pdf_b64)
+    except Exception:
+        raise HTTPException(status_code=400, detail="invalid base64 pdf data")
 
     headers = {"Authorization": f"Bearer {access_token}"}
 
     async with httpx.AsyncClient(timeout=60.0) as client:
-        # Find or create Resumes/ folder
         q = "mimeType='application/vnd.google-apps.folder' and name='Resumes' and trashed=false"
         search = await client.get(
             "https://www.googleapis.com/drive/v3/files",
             headers=headers, params={"q": q, "fields": "files(id,name)"},
         )
+        if search.status_code != 200:
+            raise HTTPException(status_code=401, detail=f"Drive auth failed (search): {search.text}")
         files = search.json().get("files", [])
         if files:
             folder_id = files[0]["id"]
@@ -218,23 +224,28 @@ async def drive_save_resume(
                 headers={**headers, "Content-Type": "application/json"},
                 content=_json.dumps({"name": "Resumes", "mimeType": "application/vnd.google-apps.folder"}),
             )
-            folder_id = create.json()["id"]
+            if create.status_code not in (200, 201):
+                raise HTTPException(status_code=401, detail=f"Drive folder create failed: {create.text}")
+            create_data = create.json()
+            if "id" not in create_data:
+                raise HTTPException(status_code=500, detail=f"Drive returned no folder id: {create_data}")
+            folder_id = create_data["id"]
 
-        # Upload HTML and convert to Google Doc (readable in Drive, exportable as PDF/Word)
-        doc_name = filename.replace(".html", "")
+        if not filename.lower().endswith(".pdf"):
+            filename = filename + ".pdf"
         boundary = "------ResumeAgentBoundary"
         meta = _json.dumps({
-            "name": doc_name,
+            "name": filename,
             "parents": [folder_id],
-            "mimeType": "application/vnd.google-apps.document",
+            "mimeType": "application/pdf",
         })
         body = (
-            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n"
-            f"{meta}\r\n"
-            f"--{boundary}\r\nContent-Type: text/html; charset=UTF-8\r\n\r\n"
-            f"{html_content}\r\n"
-            f"--{boundary}--"
-        ).encode()
+            f"--{boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n".encode()
+            + meta.encode() + b"\r\n"
+            + f"--{boundary}\r\nContent-Type: application/pdf\r\n\r\n".encode()
+            + pdf_bytes + b"\r\n"
+            + f"--{boundary}--".encode()
+        )
 
         upload = await client.post(
             "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart",
@@ -243,7 +254,6 @@ async def drive_save_resume(
         )
         result = upload.json()
         file_id = result.get("id")
-        # Link to preview in Drive (open in browser to print as PDF)
         preview_url = f"https://drive.google.com/file/d/{file_id}/view" if file_id else None
         return {"file_id": file_id, "name": result.get("name"), "folder_id": folder_id, "doc_url": preview_url}
 

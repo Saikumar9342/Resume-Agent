@@ -120,7 +120,7 @@ export const DEFAULT_STYLE: ResumeStyle = {
   fontFamily: "Inter",
   accentColor: "#1a56db",
   headingColor: "#111111",
-  bodyColor: "#333333",
+  bodyColor: "#111111",
   fontSize: 11,
   lineHeight: 1.55,
   sectionSpacing: 18,

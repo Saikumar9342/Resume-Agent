@@ -74,10 +74,10 @@ export const api = {
   // ── Google Drive ──────────────────────────────────────────────
   getDriveAuthUrl: () => request<{ url: string }>("/api/v1/drive/auth-url"),
 
-  saveToDrive: (access_token: string, filename: string, html: string) =>
+  saveToDrive: (access_token: string, filename: string, pdf_base64: string) =>
     request<{ file_id: string; name: string; doc_url?: string }>("/api/v1/drive/save", {
       method: "POST",
-      body: JSON.stringify({ access_token, filename, html }),
+      body: JSON.stringify({ access_token, filename, pdf_base64 }),
     }),
 
   rewriteResume: (id: string, opts: { section?: string; job_description?: string; instructions?: string }) =>

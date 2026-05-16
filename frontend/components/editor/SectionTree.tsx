@@ -117,14 +117,113 @@ function useDriveSave() {
     if (!driveToken) { await connect(); return; }
     setSaving(true); setStatus("idle");
     try {
-      const result = await api.saveToDrive(driveToken, `${title}.html`, html);
+      console.log("[Drive PDF] html length:", html.length);
+
+      // Extract the Google Font link from html and inject it into the parent document
+      // so the font loads in the parent (where html2canvas-pro will run).
+      const fontLinkMatch = html.match(/<link[^>]+fonts\.googleapis\.com[^>]+>/i);
+      let injectedFontLink: HTMLLinkElement | null = null;
+      if (fontLinkMatch) {
+        const hrefMatch = fontLinkMatch[0].match(/href="([^"]+)"/);
+        if (hrefMatch) {
+          injectedFontLink = document.createElement("link");
+          injectedFontLink.rel = "stylesheet";
+          injectedFontLink.href = hrefMatch[1];
+          document.head.appendChild(injectedFontLink);
+        }
+      }
+
+      // Extract body content and build a host div in the PARENT document.
+      const bodyMatch = html.match(/<body[^>]*>([\s\S]*)<\/body>/i);
+      const styleMatch = html.match(/<style[^>]*>([\s\S]*?)<\/style>/i);
+      const host = document.createElement("div");
+      host.style.cssText = "position:absolute;left:-10000px;top:0;width:794px;background:#ffffff;";
+      if (styleMatch) {
+        const styleEl = document.createElement("style");
+        styleEl.textContent = styleMatch[1];
+        host.appendChild(styleEl);
+      }
+      const content = document.createElement("div");
+      content.innerHTML = bodyMatch ? bodyMatch[1] : html;
+      host.appendChild(content);
+      document.body.appendChild(host);
+
+      // Force-load Google Font at relevant weights in the parent document
+      const doc = document as Document & {
+        fonts?: { ready: Promise<unknown>; load: (s: string) => Promise<unknown> }
+      };
+      if (doc.fonts) {
+        try {
+          const fam = getComputedStyle(content).fontFamily;
+          await Promise.all([
+            doc.fonts.load(`400 12px ${fam}`),
+            doc.fonts.load(`700 12px ${fam}`),
+            doc.fonts.load(`600 12px ${fam}`),
+          ]).catch(() => {});
+          await doc.fonts.ready;
+        } catch { /* ignore */ }
+      }
+      await new Promise(r => setTimeout(r, 1500));
+
+      const contentHeight = Math.max(host.scrollHeight, host.offsetHeight);
+      console.log("[Drive PDF] host content size:", host.scrollWidth, "x", contentHeight);
+
+      const html2canvas = (await import("html2canvas-pro")).default;
+      const jsPDF = (await import("jspdf")).jsPDF;
+
+      const canvas = await html2canvas(host, {
+        scale: 1.5,
+        useCORS: true,
+        backgroundColor: "#ffffff",
+        width: 794,
+        height: contentHeight,
+        windowWidth: 794,
+        windowHeight: contentHeight,
+      });
+
+      const imgData = canvas.toDataURL("image/jpeg", 0.85);
+      const pdf = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait" });
+      const pdfWidth = pdf.internal.pageSize.getWidth();   // 210
+      const pdfHeight = pdf.internal.pageSize.getHeight(); // 297
+      const imgHeightMm = (canvas.height * pdfWidth) / canvas.width;
+
+      let heightLeft = imgHeightMm;
+      let position = 0;
+      pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeightMm);
+      heightLeft -= pdfHeight;
+      while (heightLeft > 0) {
+        position = heightLeft - imgHeightMm;
+        pdf.addPage();
+        pdf.addImage(imgData, "JPEG", 0, position, pdfWidth, imgHeightMm);
+        heightLeft -= pdfHeight;
+      }
+
+      const pdfBlob = pdf.output("blob");
+      console.log("[Drive PDF] generated blob size:", pdfBlob.size);
+      document.body.removeChild(host);
+      if (injectedFontLink && injectedFontLink.parentNode) injectedFontLink.parentNode.removeChild(injectedFontLink);
+
+      const reader = new FileReader();
+      const base64: string = await new Promise((resolve, reject) => {
+        reader.onload = () => resolve((reader.result as string).split(",")[1] || "");
+        reader.onerror = reject;
+        reader.readAsDataURL(pdfBlob);
+      });
+
+      const result = await api.saveToDrive(driveToken, `${title}.pdf`, base64);
       setStatus("success");
       if (result.doc_url) window.open(result.doc_url, "_blank");
       setTimeout(() => setStatus("idle"), 4000);
-    } catch {
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error("Drive save failed:", msg);
+      // If it looks like an auth failure, clear the token so user can re-connect
+      if (msg.includes("401") || msg.includes("Drive auth") || msg.includes("invalid_grant") || msg.includes("expired")) {
+        setDriveToken(null);
+        sessionStorage.removeItem("gdrive_token");
+        setConnectError("Drive session expired. Click connect to re-authorize.");
+      }
       setStatus("error");
-      setDriveToken(null);
-      sessionStorage.removeItem("gdrive_token");
       setTimeout(() => setStatus("idle"), 3000);
     } finally {
       setSaving(false);
@@ -249,68 +348,95 @@ export function SectionTree({
           boxShadow: "0 8px 32px -8px rgba(0,0,0,0.4)",
           display: "flex", flexDirection: "column", maxHeight: "60vh",
         }}>
-          {/* Drive save row */}
-          <div style={{ padding: "8px 10px", borderBottom: "1px solid var(--line)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              {/* Google Drive logo mark */}
-              <svg width="13" height="11" viewBox="0 0 87 78" style={{ flexShrink: 0 }}>
-                <path d="M6.1 66.5l4.5 7.8c.9 1.6 2.3 2.8 3.8 3.6L28.9 52H0c0 1.8.5 3.6 1.4 5.2l4.7 9.3z" fill="#0066DA"/>
-                <path d="M43.5 25L28.9 0c-1.5.8-2.9 2-3.8 3.6L1.4 46.8c-.9 1.6-1.4 3.4-1.4 5.2h28.9L43.5 25z" fill="#00AC47"/>
-                <path d="M72.6 78c1.5-.8 2.9-2 3.8-3.6l1.8-3.1 8.6-14.9c.9-1.6 1.4-3.4 1.4-5.2H59.1L72.6 78z" fill="#EA4335"/>
-                <path d="M43.5 25L58.1 0H14.2C12.1 0 10.1.5 8.4 1.4L43.5 25z" fill="#00832D"/>
-                <path d="M59.1 52H87L72.6 26.2 43.5 25 28.9 52h30.2z" fill="#2684FC"/>
-                <path d="M43.5 25L8.4 1.4C6.7 2.3 5.3 3.6 4.4 5.2L43.5 25zM87 52H59.1L72.6 78c1.5-.8 2.9-2 3.8-3.6L87 52z" fill="#FFBA00"/>
-              </svg>
-              <span className="mono" style={{ fontSize: 11, color: "var(--fg-2)", flex: 1 }}>
-                {drive.driveToken ? "Drive connected" : "Google Drive"}
-              </span>
+          {/* Drive save card */}
+          <div style={{
+            padding: "10px 12px",
+            borderBottom: "1px solid var(--line)",
+            background: drive.driveToken
+              ? "linear-gradient(180deg, color-mix(in oklch, var(--green) 4%, var(--bg-1)) 0%, var(--bg-1) 100%)"
+              : "var(--bg-1)",
+          }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <div style={{
+                width: 28, height: 28, borderRadius: 6,
+                background: drive.driveToken ? "color-mix(in oklch, var(--green) 14%, var(--bg-2))" : "var(--bg-2)",
+                display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0,
+                border: `1px solid ${drive.driveToken ? "color-mix(in oklch, var(--green) 30%, transparent)" : "var(--line)"}`,
+              }}>
+                <svg width="14" height="12" viewBox="0 0 87 78">
+                  <path d="M6.1 66.5l4.5 7.8c.9 1.6 2.3 2.8 3.8 3.6L28.9 52H0c0 1.8.5 3.6 1.4 5.2l4.7 9.3z" fill="#0066DA"/>
+                  <path d="M43.5 25L28.9 0c-1.5.8-2.9 2-3.8 3.6L1.4 46.8c-.9 1.6-1.4 3.4-1.4 5.2h28.9L43.5 25z" fill="#00AC47"/>
+                  <path d="M72.6 78c1.5-.8 2.9-2 3.8-3.6l1.8-3.1 8.6-14.9c.9-1.6 1.4-3.4 1.4-5.2H59.1L72.6 78z" fill="#EA4335"/>
+                  <path d="M43.5 25L58.1 0H14.2C12.1 0 10.1.5 8.4 1.4L43.5 25z" fill="#00832D"/>
+                  <path d="M59.1 52H87L72.6 26.2 43.5 25 28.9 52h30.2z" fill="#2684FC"/>
+                  <path d="M43.5 25L8.4 1.4C6.7 2.3 5.3 3.6 4.4 5.2L43.5 25zM87 52H59.1L72.6 78c1.5-.8 2.9-2 3.8-3.6L87 52z" fill="#FFBA00"/>
+                </svg>
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="mono" style={{ fontSize: 11.5, color: "var(--fg-1)", fontWeight: 600 }}>
+                  Google Drive
+                </div>
+                <div className="mono" style={{ fontSize: 10, color: drive.driveToken ? "var(--green)" : "var(--fg-3)", marginTop: 1, display: "flex", alignItems: "center", gap: 4 }}>
+                  {drive.driveToken && <span style={{ width: 5, height: 5, borderRadius: 5, background: "var(--green)" }} />}
+                  {drive.driveToken ? "connected · saves as PDF" : "save resumes as PDF"}
+                </div>
+              </div>
               {drive.driveToken && (
                 <button
                   onClick={drive.disconnect}
                   className="mono"
-                  title="Disconnect"
-                  style={{ fontSize: 10, color: "var(--fg-4)", background: "none", border: 0, cursor: "pointer", padding: "0 2px", flexShrink: 0 }}
+                  title="Disconnect Drive"
+                  style={{ fontSize: 11, color: "var(--fg-4)", background: "none", border: 0, cursor: "pointer", padding: 4, flexShrink: 0, lineHeight: 1 }}
                 >✕</button>
               )}
-              <button
-                onClick={async () => {
-                  if (!drive.driveToken) { await drive.connect(); return; }
-                  if (resumeTitle) {
-                    const html = buildDriveHtml ? buildDriveHtml() : (resume ? buildResumeHtml(resume, resumeTitle) : "");
-                    if (html) await drive.saveHtml(resumeTitle, html);
-                  }
-                }}
-                disabled={drive.saving}
-                className="btn mono"
-                style={{
-                  height: 24, fontSize: 10.5, padding: "0 9px", flexShrink: 0,
-                  background: drive.status === "success" ? "color-mix(in oklch, var(--green) 12%, var(--bg-2))"
-                    : drive.status === "error" ? "color-mix(in oklch, var(--red) 12%, var(--bg-2))"
-                    : drive.driveToken ? "var(--bg-2)" : "color-mix(in oklch, #4285f4 10%, var(--bg-2))",
-                  color: drive.status === "success" ? "var(--green)"
-                    : drive.status === "error" ? "var(--red)"
-                    : drive.driveToken ? "var(--fg-1)" : "#4285f4",
-                  border: `1px solid ${drive.driveToken ? "var(--line)" : "#4285f4"}`,
-                  borderRadius: 5,
-                }}
-              >
-                {drive.saving ? "saving…"
-                  : drive.status === "success" ? "✓ saved!"
-                  : drive.status === "error" ? "retry"
-                  : drive.driveToken ? "save now"
-                  : "connect"}
-              </button>
             </div>
 
-            {/* Error / popup blocked messages */}
+            <button
+              onClick={async () => {
+                if (!drive.driveToken) { await drive.connect(); return; }
+                if (!resumeTitle || !resume) {
+                  alert("Open or create a resume first, then click save.");
+                  return;
+                }
+                const html = buildDriveHtml ? buildDriveHtml() : buildResumeHtml(resume, resumeTitle);
+                if (html) await drive.saveHtml(resumeTitle, html);
+              }}
+              disabled={drive.saving || (!!drive.driveToken && (!resumeTitle || !resume))}
+              className="btn mono"
+              style={{
+                marginTop: 8, width: "100%",
+                height: 30, fontSize: 11.5, padding: "0 12px",
+                background: drive.status === "success" ? "color-mix(in oklch, var(--green) 18%, var(--bg-2))"
+                  : drive.status === "error" ? "color-mix(in oklch, var(--red) 14%, var(--bg-2))"
+                  : drive.driveToken ? "var(--accent)" : "color-mix(in oklch, #4285f4 12%, var(--bg-2))",
+                color: drive.status === "success" ? "var(--green)"
+                  : drive.status === "error" ? "var(--red)"
+                  : drive.driveToken ? "var(--bg-0)" : "#4285f4",
+                border: `1px solid ${
+                  drive.status === "success" ? "var(--green)"
+                  : drive.status === "error" ? "var(--red)"
+                  : drive.driveToken ? "var(--accent)" : "#4285f4"
+                }`,
+                borderRadius: 6, fontWeight: 600,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                cursor: drive.saving ? "wait" : "pointer",
+              }}
+            >
+              {drive.saving ? "generating PDF…"
+                : drive.status === "success" ? "✓ saved to Drive"
+                : drive.status === "error" ? "✕ failed — retry"
+                : drive.driveToken ? "↑ save PDF to Drive"
+                : "connect Google Drive"}
+            </button>
+
             {drive.connectError && (
               <div className="mono" style={{ fontSize: 10, color: "var(--red)", marginTop: 6, lineHeight: 1.5 }}>
-                {drive.connectError}
+                ⚠ {drive.connectError}
               </div>
             )}
             {drive.popupBlocked && (
               <div className="mono" style={{ fontSize: 10, color: "var(--amber)", marginTop: 6, lineHeight: 1.5 }}>
-                Popup was blocked. Allow popups for this site and click connect again.
+                ⚠ Popup was blocked. Allow popups and try again.
               </div>
             )}
           </div>

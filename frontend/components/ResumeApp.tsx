@@ -19,8 +19,9 @@ import type { VersionEntry } from "@/components/editor/RightRail";
 import { StatusBar } from "@/components/editor/StatusBar";
 import { CommandPalette } from "@/components/editor/CommandPalette";
 import { PrintPreview } from "@/components/editor/PrintPreview";
-import { TemplatePicker } from "@/components/editor/TemplatePicker";
+import { TemplatePicker, MinimalTemplate, ClassicTemplate, ModernTemplate, ExecutiveTemplate, CompactTemplate, CreativeTemplate } from "@/components/editor/TemplatePicker";
 import type { TemplateId } from "@/components/editor/TemplatePicker";
+import { renderToStaticMarkup } from "react-dom/server";
 import { ShortcutOverlay } from "@/components/editor/ShortcutOverlay";
 import { VersionDiffViewer } from "@/components/editor/VersionDiffViewer";
 import { OnboardingWizard } from "@/components/editor/OnboardingWizard";
@@ -61,60 +62,34 @@ export function ResumeApp() {
 
   const buildDriveHtml = useMemo(() => () => {
     if (!resume?.content) return "";
-    const c = resume.content;
-    const acc = resumeStyle.accentColor;
+    const TemplateMap = {
+      minimal: MinimalTemplate, classic: ClassicTemplate, modern: ModernTemplate,
+      executive: ExecutiveTemplate, compact: CompactTemplate, creative: CreativeTemplate,
+    };
+    const Tpl = TemplateMap[template] ?? ClassicTemplate;
+    const body = renderToStaticMarkup(<Tpl resume={resume.content} resumeStyle={resumeStyle} />);
     const esc = (s: string) => (s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    const contact = c.contact ?? {} as typeof c.contact;
-    const contactLine = [contact.email, contact.phone, contact.location, contact.linkedin, contact.github].filter(Boolean).map(esc).join(" &nbsp;|&nbsp; ");
-
-    // Google Docs ignores margin/padding on ul/li and adds its own spacing.
-    // Solution: avoid <ul>/<li> entirely — use <p> with "• " prefix for bullets.
-    const S = `style="margin:0;padding:0;line-height:1.25;font-size:8.5pt"`;
-    const rule = `<hr style="border:none;border-top:1.5px solid ${acc};margin:-4px 0 5px 0">`;
-    const sectionHead = (label: string) =>
-      `<p style="margin:8px 0 0;padding:0;font-size:9pt;font-weight:700;text-transform:uppercase;letter-spacing:.8px;color:${acc};line-height:1"><b>${label}</b></p>${rule}`;
-
-    const bullet = (text: string) =>
-      `<p ${S} style="margin:0;padding:0 0 0 10px;line-height:1.25;font-size:8.5pt;text-indent:-10px">&#8226;&nbsp;${text}</p>`;
-
-    const expHtml = (c.experience ?? []).map(e => [
-      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(e.company)}</b><span style="color:#666;font-size:8pt"> &nbsp;${esc(e.start)} – ${esc(e.end || "Present")}</span></p>`,
-      `<p style="margin:0;padding:0;font-size:8.5pt;font-style:italic;color:#555;line-height:1.2">${esc(e.title)}</p>`,
-      ...(e.bullets ?? []).map(b => bullet(esc(b))),
-    ].join("")).join("");
-
-    const eduHtml = (c.education ?? []).map(e => [
-      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(e.institution)}</b><span style="color:#666;font-size:8pt"> &nbsp;${esc(e.year ?? "")}</span></p>`,
-      `<p style="margin:0;padding:0;font-size:8.5pt;color:#555;line-height:1.2">${esc(e.degree)}${e.field ? " in " + esc(e.field) : ""}</p>`,
-    ].join("")).join("");
-
-    const skills = [...(c.skills?.technical ?? []), ...(c.skills?.soft ?? [])].map(esc).join(" · ");
-
-    const projHtml = (c.projects ?? []).map(p => [
-      `<p style="margin:3px 0 0;padding:0;font-size:9.5pt;line-height:1.25"><b>${esc(p.name)}</b>${p.technologies?.length ? `<span style="font-size:8pt;color:#777"> · ${p.technologies.map(esc).join(", ")}</span>` : ""}</p>`,
-      p.description ? `<p style="margin:0;padding:0;font-size:8.5pt;color:#333;line-height:1.2">${esc(p.description)}</p>` : "",
-    ].join("")).join("");
-
-    const certHtml = (c.certifications ?? []).map(cert =>
-      bullet(esc(typeof cert === "string" ? cert : (cert as {name?:string}).name ?? ""))).join("");
-
+    const FONTS: Record<string, string> = {
+      "Inter, sans-serif": "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&display=block",
+      "'Roboto', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=block",
+      "'Merriweather', Georgia, serif": "https://fonts.googleapis.com/css2?family=Merriweather:wght@300;400;700&display=block",
+      "'Lato', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Lato:wght@300;400;700&display=block",
+      "'Source Sans 3', Arial, sans-serif": "https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@300;400;600;700&display=block",
+      "'Playfair Display', Georgia, serif": "https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700;800&display=block",
+    };
+    const fontUrl = FONTS[resumeStyle.fontFamily];
+    const fontLink = fontUrl ? `<link rel="stylesheet" href="${fontUrl}">` : "";
     return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>${esc(resume.title ?? "resume")}</title>
+${fontLink}
 <style>
-  @page { size: A4; margin: 13mm 15mm 13mm 15mm; }
-  body { font-family: Arial, sans-serif; font-size: 9pt; color: #111; line-height: 1.25; margin: 0; padding: 0; }
-  p { margin: 0; padding: 0; }
-</style></head><body>
-<p style="font-size:17pt;font-weight:700;margin:0;padding:0"><b>${esc(contact.name ?? "")}</b></p>
-<p style="font-size:8pt;color:#555;margin:1px 0 3px;padding:0">${contactLine}</p>
-${c.summary ? sectionHead("Professional Summary") + `<p style="margin:0;padding:0;font-size:8.5pt;line-height:1.3">${esc(c.summary)}</p>` : ""}
-${(c.experience ?? []).length ? sectionHead("Professional Experience") + expHtml : ""}
-${(c.education ?? []).length ? sectionHead("Education") + eduHtml : ""}
-${skills ? sectionHead("Skills") + `<p style="margin:0;padding:0;font-size:8.5pt;line-height:1.4">${skills}</p>` : ""}
-${(c.projects ?? []).length ? sectionHead("Projects") + projHtml : ""}
-${(c.certifications ?? []).length ? sectionHead("Certifications") + certHtml : ""}
-</body></html>`;
+  @page { size: A4; margin: 0; }
+  html, body { margin: 0; padding: 0; font-family: ${resumeStyle.fontFamily}; }
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+  ul { padding-left: 16px; }
+  li { list-style: disc; }
+</style></head><body>${body}</body></html>`;
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [resume, resumeStyle]);
+  }, [resume, resumeStyle, template]);
 
   // Persist last resumeId across reloads
   useEffect(() => {
